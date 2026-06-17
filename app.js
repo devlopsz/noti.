@@ -948,6 +948,7 @@ function renderNotes() {
     const folder = getFolder(note.folderId);
     card.dataset.noteId = note.id;
     card.classList.toggle("active", note.id === selectedNoteId);
+    card.classList.toggle("checklist-complete", isChecklistComplete(note));
     card.querySelector(".note-kind").textContent = getNoteKindLabel(note);
     card.querySelector(".note-pin").hidden = !note.pinned;
     card.querySelector("h3").textContent = note.title.trim() || "Sem título";
@@ -957,8 +958,8 @@ function renderNotes() {
     card.querySelector(".note-date").textContent = formatNoteDate(note.createdAt);
     const modified = card.querySelector(".note-modified");
     if (modified) {
-      modified.textContent = `Editada ${formatNoteDate(note.updatedAt)}`;
-      modified.title = `Criada em ${formatFullDateTime(note.createdAt)} · Editada em ${formatFullDateTime(note.updatedAt)}`;
+      modified.textContent = "";
+      modified.hidden = true;
     }
     renderNoteThumbnail(card, note);
 
@@ -4106,6 +4107,10 @@ function getChecklistSummary(note) {
   const total = note.items.length;
   const done = note.items.filter((item) => item.done).length;
   return total ? `${done}/${total}` : "Checklist";
+}
+
+function isChecklistComplete(note) {
+  return note?.type === "checklist" && note.items.length > 0 && note.items.every((item) => item.done);
 }
 
 function getShoppingSummary(note) {
