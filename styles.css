@@ -341,27 +341,138 @@
   height: 17px;
 }
 
-.format-size-field {
+.format-size-button {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   height: 32px;
   border: 1px solid var(--line-soft);
   border-radius: 999px;
-  padding: 0 8px 0 10px;
+  padding: 0 9px 0 11px;
   background: var(--surface);
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 500;
 }
 
-.format-size-field select {
-  width: 54px;
+.format-size-button:hover,
+.format-size-button[aria-expanded="true"] {
+  background: var(--surface-hover);
+}
+
+.format-size-button strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.format-size-button svg {
+  width: 13px;
+  height: 13px;
+  color: var(--text-soft);
+}
+
+.format-size-menu,
+.text-format-menu {
+  position: fixed;
+  z-index: 230;
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 7px;
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  color: var(--text);
+  box-shadow: 0 24px 70px color-mix(in srgb, #000 24%, transparent);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+}
+
+.format-size-menu[hidden],
+.text-format-menu[hidden] {
+  display: none !important;
+}
+
+.format-size-menu {
+  min-width: 112px;
+}
+
+.text-format-menu {
+  min-width: 236px;
+}
+
+.format-size-option,
+.text-format-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
   border: 0;
-  outline: 0;
+  border-radius: 12px;
+  padding: 0 11px;
   background: transparent;
   color: var(--text);
-  font: inherit;
+  text-align: left;
+  font-size: 14px;
+  font-weight: 520;
+}
+
+.format-size-option {
+  justify-content: space-between;
+}
+
+.format-size-option:hover,
+.format-size-option.active,
+.text-format-menu button:hover {
+  background: var(--surface-hover);
+}
+
+.format-size-option.active::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.text-format-menu svg {
+  width: 17px;
+  height: 17px;
+  color: var(--accent);
+}
+
+.text-format-menu-actions {
+  display: grid;
+  gap: 3px;
+}
+
+.text-format-menu-section {
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 7px;
+}
+
+.text-format-menu-section p {
+  margin: 0 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 560;
+}
+
+.text-format-size-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.text-format-size-options .format-size-option {
+  justify-content: center;
+  min-height: 36px;
+}
+
+.text-format-size-options .format-size-option.active::after {
+  content: none;
 }
 
 .format-color-options {
@@ -501,7 +612,7 @@
     background: color-mix(in srgb, var(--surface) 96%, transparent) !important;
   }
 
-  body.mobile-screen-editor .text-format-toolbar .format-size-field span {
+  body.mobile-screen-editor .text-format-toolbar .format-size-button span {
     display: none !important;
   }
 

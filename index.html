@@ -383,18 +383,33 @@
                   <button class="format-button" type="button" data-format-command="underline" aria-label="Sublinhado" title="Sublinhado">
                     <svg><use href="#icon-underline"></use></svg>
                   </button>
-                  <label class="format-size-field" aria-label="Tamanho do texto">
+                  <button class="format-size-button" id="formatSizeButton" type="button" aria-haspopup="menu" aria-expanded="false">
                     <span>Tamanho</span>
-                    <select id="formatSizeSelect">
-                      <option value="14">14</option>
-                      <option value="16" selected>16</option>
-                      <option value="18">18</option>
-                      <option value="22">22</option>
-                      <option value="28">28</option>
-                      <option value="34">34</option>
-                    </select>
-                  </label>
+                    <strong id="formatSizeValue">16</strong>
+                    <svg><use href="#icon-chevron-down"></use></svg>
+                  </button>
                   <div class="format-color-options" id="formatColorOptions" aria-label="Cor do texto"></div>
+                </div>
+                <div class="format-size-menu" id="formatSizeMenu" role="menu" hidden></div>
+                <div class="text-format-menu" id="textFormatMenu" role="menu" hidden>
+                  <div class="text-format-menu-actions" aria-label="Estilo do texto">
+                    <button type="button" data-format-command="bold" aria-label="Negrito">
+                      <svg><use href="#icon-bold"></use></svg>
+                      <span>Negrito</span>
+                    </button>
+                    <button type="button" data-format-command="italic" aria-label="Itálico">
+                      <svg><use href="#icon-italic"></use></svg>
+                      <span>Itálico</span>
+                    </button>
+                    <button type="button" data-format-command="underline" aria-label="Sublinhado">
+                      <svg><use href="#icon-underline"></use></svg>
+                      <span>Sublinhado</span>
+                    </button>
+                  </div>
+                  <div class="text-format-menu-section">
+                    <p>Tamanho</p>
+                    <div class="text-format-size-options" id="textFormatSizeOptions" aria-label="Tamanho do texto"></div>
+                  </div>
                 </div>
                 <button class="primary-action compact finalize-note-button" id="finalizeNoteButton" type="button">
                   <svg><use href="#icon-check"></use></svg>

@@ -32,7 +32,7 @@
     overflow-x: auto !important;
   }
 
-  html body.mobile-layout.mobile-screen-editor.mobile-note-editing .format-size-field span {
+  html body.mobile-layout.mobile-screen-editor.mobile-note-editing .format-size-button span {
     display: none !important;
   }
 }

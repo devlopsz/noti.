@@ -20,6 +20,7 @@ const TOOLBAR_LABELS = {
 };
 const ACCENT_COLORS = ["#b98500", "#007aff", "#34c759", "#ff3b30", "#af52de", "#ff9500", "#64d2ff", "#ff2d55", "#5856d6", "#8e8e93"];
 const FOLDER_COLORS = ACCENT_COLORS.slice();
+const TEXT_SIZE_OPTIONS = [14, 16, 18, 22, 28, 34];
 const DEFAULT_DRAWING_TOOL = { mode: "pen", color: "#b98500", width: 6, context: "page", blockId: "" };
 const PHONE_COUNTRIES = [
   { code: "BR", name: "Brasil", dial: "+55", flag: "\uD83C\uDDE7\uD83C\uDDF7" },
@@ -78,6 +79,8 @@ let activeTextSelection = { start: 0, end: 0 };
 let activeRichEditor = null;
 let activeRichRange = null;
 let activeRichSelection = null;
+let richTextPressTimer = 0;
+let richTextPressPoint = null;
 let checklistImageTargetId = null;
 let shoppingImageTargetId = null;
 let editingFolderId = null;
@@ -160,7 +163,11 @@ const elements = {
   goalTypeButton: $("#goalTypeButton"),
   segmentedControl: $(".segmented-control"),
   textFormatToolbar: $("#textFormatToolbar"),
-  formatSizeSelect: $("#formatSizeSelect"),
+  formatSizeButton: $("#formatSizeButton"),
+  formatSizeValue: $("#formatSizeValue"),
+  formatSizeMenu: $("#formatSizeMenu"),
+  textFormatMenu: $("#textFormatMenu"),
+  textFormatSizeOptions: $("#textFormatSizeOptions"),
   formatColorOptions: $("#formatColorOptions"),
   finalizeNoteButton: $("#finalizeNoteButton"),
   pinButton: $("#pinButton"),
@@ -337,7 +344,7 @@ function bindEvents() {
   elements.settingsTabs.forEach((button) => {
     button.addEventListener("click", () => setActiveSettingsTab(button.dataset.settingsTab));
   });
-  elements.profileLoginButton.addEventListener("click", () => openAccountModal("login"));
+  elements.profileLoginButton.addEventListener("click", openProfileAccountEntry);
   elements.editProfileButton.addEventListener("click", openProfileEditDialog);
   elements.cancelProfileEditButton.addEventListener("click", closeProfileEditDialog);
   elements.saveProfileButton.addEventListener("click", saveProfileSettings);
@@ -379,9 +386,10 @@ function bindEvents() {
   elements.logoutButton.addEventListener("click", logoutUser);
   elements.textFormatToolbar?.addEventListener("mousedown", handleTextFormatMouseDown);
   elements.textFormatToolbar?.addEventListener("click", handleTextFormatClick);
-  elements.formatSizeSelect?.addEventListener("pointerdown", () => rememberRichTextEditor(getActiveRichEditor()));
-  elements.formatSizeSelect?.addEventListener("click", () => applyTextFormat("fontSize", elements.formatSizeSelect.value, { silent: true }));
-  elements.formatSizeSelect?.addEventListener("change", () => applyTextFormat("fontSize", elements.formatSizeSelect.value));
+  elements.formatSizeMenu?.addEventListener("mousedown", preserveRichTextMenuSelection);
+  elements.formatSizeMenu?.addEventListener("click", handleFormatSizeMenuClick);
+  elements.textFormatMenu?.addEventListener("mousedown", preserveRichTextMenuSelection);
+  elements.textFormatMenu?.addEventListener("click", handleTextFormatMenuClick);
   elements.siteContextMenu?.addEventListener("click", handleSiteContextMenuClick);
   document.addEventListener("selectionchange", handleRichSelectionChange);
   document.addEventListener("click", (event) => {
@@ -395,6 +403,8 @@ function bindEvents() {
     if (!event.target.closest("#mobileNoteActionMenu")) closeMobileNoteActionMenu();
     if (!event.target.closest("#mobileFolderMoveMenu")) closeMobileFolderMoveMenu();
     if (!event.target.closest("#siteContextMenu")) closeSiteContextMenu();
+    if (!event.target.closest("#formatSizeMenu, #formatSizeButton")) closeFormatSizeMenu();
+    if (!event.target.closest("#textFormatMenu")) closeTextFormatMenu();
 
     if (!event.target.closest("#toolbarContextMenu")) closeToolbarContextMenu();
     if (!event.target.closest("#themeDropdown")) closeThemeMenu();
@@ -408,6 +418,8 @@ function bindEvents() {
     if (event.key === "Escape") {
       closeToolbarContextMenu();
       closeSiteContextMenu();
+      closeFormatSizeMenu();
+      closeTextFormatMenu();
       closeThemeMenu();
       closeCreateTypeModal();
       closeDrawingTool();
@@ -575,6 +587,7 @@ function updateMobileLayoutState() {
   document.body.classList.toggle("mobile-note-editing", mobile && mobileScreen === "editor" && Boolean(getSelectedNote() && !getSelectedNote().finalized && !getSelectedNote().trashed));
   document.body.classList.toggle("mobile-note-finalized", mobile && mobileScreen === "editor" && Boolean(getSelectedNote()?.finalized));
   document.body.classList.toggle("mobile-note-trash", mobile && mobileScreen === "editor" && Boolean(getSelectedNote()?.trashed));
+  document.body.classList.toggle("mobile-settings-page", mobile && elements.settingsModal && !elements.settingsModal.hidden);
   placeTextFormatToolbar();
 
   if (!mobile) {
@@ -1146,11 +1159,25 @@ function handleMobileFolderMoveMenuClick(event) {
 }
 
 function handleAppContextMenu(event) {
-  if (isMobileLayout() || event.defaultPrevented) return;
+  if (event.defaultPrevented) return;
   const target = event.target;
-  if (isNativeEditableTarget(target) || target.closest("#toolbarContextMenu, #mobileNoteActionMenu, #siteContextMenu, .app-modal, .profile-edit-dialog, .folder-edit-dialog, .draw-tool-popover")) return;
+  const targetElement = target?.nodeType === Node.ELEMENT_NODE ? target : target?.parentElement;
+  const richEditor = targetElement?.closest?.("[data-rich-editor]");
+  if (richEditor?.isContentEditable) {
+    const range = getCurrentRichSelectionRange(richEditor);
+    if (range && !range.collapsed) {
+      event.preventDefault();
+      rememberRichTextEditor(richEditor);
+      showTextFormatMenu(event.clientX, event.clientY, richEditor);
+      return;
+    }
+    if (isMobileLayout()) return;
+  }
 
-  const noteCard = target.closest(".note-card");
+  if (isMobileLayout()) return;
+  if (isNativeEditableTarget(targetElement) || targetElement?.closest?.("#toolbarContextMenu, #mobileNoteActionMenu, #siteContextMenu, #formatSizeMenu, #textFormatMenu, .app-modal, .profile-edit-dialog, .folder-edit-dialog, .draw-tool-popover")) return;
+
+  const noteCard = targetElement?.closest?.(".note-card");
   if (noteCard?.dataset.noteId) {
     event.preventDefault();
     selectedNoteId = noteCard.dataset.noteId;
@@ -1160,14 +1187,14 @@ function handleAppContextMenu(event) {
     return;
   }
 
-  if (target.closest(".notes-panel")) {
+  if (targetElement?.closest?.(".notes-panel")) {
     event.preventDefault();
     showSiteContextMenu(event.clientX, event.clientY);
   }
 }
 
 function isNativeEditableTarget(target) {
-  return Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
+  return Boolean(target?.closest?.("input, textarea, select, [contenteditable='true']"));
 }
 
 function showSiteContextMenu(x, y) {
@@ -3440,7 +3467,6 @@ function bindRichTextEditor(editor) {
   editor.addEventListener("keyup", remember);
   editor.addEventListener("mouseup", remember);
   editor.addEventListener("input", () => {
-    normalizeEditorMarkup(editor);
     persistRichEditor(editor);
     rememberRichTextEditor(editor);
   });
@@ -3453,6 +3479,49 @@ function bindRichTextEditor(editor) {
     persistRichEditor(editor);
     rememberRichTextEditor(editor);
   });
+  editor.addEventListener("contextmenu", (event) => {
+    const range = getCurrentRichSelectionRange(editor);
+    if (!range || range.collapsed) return;
+    event.preventDefault();
+    rememberRichTextEditor(editor);
+    showTextFormatMenu(event.clientX, event.clientY, editor);
+  });
+  editor.addEventListener("pointerdown", (event) => handleRichEditorPointerDown(event, editor));
+  editor.addEventListener("pointermove", handleRichEditorPointerMove);
+  editor.addEventListener("pointerup", clearRichTextPressTimer);
+  editor.addEventListener("pointercancel", clearRichTextPressTimer);
+}
+
+function handleRichEditorPointerDown(event, editor) {
+  clearRichTextPressTimer();
+  if (!isMobileLayout() || event.pointerType === "mouse" || event.button !== 0) return;
+  richTextPressPoint = { x: event.clientX, y: event.clientY };
+  richTextPressTimer = window.setTimeout(() => {
+    const range = getCurrentRichSelectionRange(editor);
+    if (!range || range.collapsed) return;
+    rememberRichTextEditor(editor);
+    showTextFormatMenu(richTextPressPoint.x, richTextPressPoint.y, editor);
+  }, 520);
+}
+
+function handleRichEditorPointerMove(event) {
+  if (!richTextPressTimer || !richTextPressPoint) return;
+  const deltaX = Math.abs(event.clientX - richTextPressPoint.x);
+  const deltaY = Math.abs(event.clientY - richTextPressPoint.y);
+  if (deltaX > 10 || deltaY > 10) clearRichTextPressTimer();
+}
+
+function clearRichTextPressTimer() {
+  if (richTextPressTimer) window.clearTimeout(richTextPressTimer);
+  richTextPressTimer = 0;
+  richTextPressPoint = null;
+}
+
+function getCurrentRichSelectionRange(editor = getActiveRichEditor()) {
+  const selection = window.getSelection?.();
+  if (!editor || !selection?.rangeCount) return null;
+  const range = selection.getRangeAt(0);
+  return isRangeInsideEditor(editor, range) ? range : null;
 }
 
 function rememberRichTextEditor(editor) {
@@ -3624,6 +3693,12 @@ function handleTextFormatMouseDown(event) {
 }
 
 function handleTextFormatClick(event) {
+  const sizeButton = event.target.closest("#formatSizeButton");
+  if (sizeButton) {
+    toggleFormatSizeMenu();
+    return;
+  }
+
   const commandButton = event.target.closest("[data-format-command]");
   if (commandButton) {
     applyTextFormat(commandButton.dataset.formatCommand);
@@ -3636,6 +3711,117 @@ function handleTextFormatClick(event) {
   }
 }
 
+function preserveRichTextMenuSelection(event) {
+  if (event.target.closest("button")) event.preventDefault();
+}
+
+function toggleFormatSizeMenu() {
+  rememberRichTextEditor(getActiveRichEditor());
+  if (!elements.formatSizeMenu?.hidden) {
+    closeFormatSizeMenu();
+    return;
+  }
+  showFormatSizeMenu();
+}
+
+function showFormatSizeMenu() {
+  if (!elements.formatSizeMenu || !elements.formatSizeButton) return;
+  closeTextFormatMenu();
+  renderTextSizeOptions(elements.formatSizeMenu);
+  elements.formatSizeMenu.hidden = false;
+  elements.formatSizeButton.setAttribute("aria-expanded", "true");
+  elements.formatSizeMenu.style.left = "0px";
+  elements.formatSizeMenu.style.top = "0px";
+
+  const buttonBounds = elements.formatSizeButton.getBoundingClientRect();
+  const menuBounds = elements.formatSizeMenu.getBoundingClientRect();
+  const left = Math.max(10, Math.min(window.innerWidth - menuBounds.width - 10, buttonBounds.left));
+  const below = buttonBounds.bottom + 8;
+  const above = buttonBounds.top - menuBounds.height - 8;
+  const top = below + menuBounds.height > window.innerHeight - 10 ? Math.max(10, above) : below;
+  elements.formatSizeMenu.style.left = `${left}px`;
+  elements.formatSizeMenu.style.top = `${top}px`;
+}
+
+function closeFormatSizeMenu() {
+  if (elements.formatSizeMenu) elements.formatSizeMenu.hidden = true;
+  elements.formatSizeButton?.setAttribute("aria-expanded", "false");
+}
+
+function handleFormatSizeMenuClick(event) {
+  const sizeButton = event.target.closest("[data-format-size]");
+  if (!sizeButton) return;
+  applyTextFormat("fontSize", sizeButton.dataset.formatSize);
+  closeFormatSizeMenu();
+}
+
+function handleTextFormatMenuClick(event) {
+  const commandButton = event.target.closest("[data-format-command]");
+  if (commandButton) {
+    applyTextFormat(commandButton.dataset.formatCommand);
+    closeTextFormatMenu();
+    return;
+  }
+
+  const sizeButton = event.target.closest("[data-format-size]");
+  if (sizeButton) {
+    applyTextFormat("fontSize", sizeButton.dataset.formatSize);
+    closeTextFormatMenu();
+  }
+}
+
+function showTextFormatMenu(x, y, editor = getActiveRichEditor()) {
+  if (!elements.textFormatMenu || !editor) return;
+  const note = getSelectedNote();
+  if (!canEditNoteContent(note) || note.type === "goal") return;
+
+  rememberRichTextEditor(editor);
+  closeFormatSizeMenu();
+  closeMobileNoteActionMenu();
+  closeMobileFolderMoveMenu();
+  closeSiteContextMenu();
+  closeToolbarContextMenu();
+  renderTextSizeOptions(elements.textFormatSizeOptions);
+
+  elements.textFormatMenu.hidden = false;
+  elements.textFormatMenu.style.left = "0px";
+  elements.textFormatMenu.style.top = "0px";
+  const bounds = elements.textFormatMenu.getBoundingClientRect();
+  const safeX = Number.isFinite(x) ? x : window.innerWidth / 2;
+  const safeY = Number.isFinite(y) ? y : window.innerHeight / 2;
+  const left = Math.max(10, Math.min(window.innerWidth - bounds.width - 10, safeX));
+  const below = safeY + 10;
+  const above = safeY - bounds.height - 10;
+  const top = below + bounds.height > window.innerHeight - 10 ? Math.max(10, above) : below;
+  elements.textFormatMenu.style.left = `${left}px`;
+  elements.textFormatMenu.style.top = `${top}px`;
+}
+
+function closeTextFormatMenu() {
+  if (elements.textFormatMenu) elements.textFormatMenu.hidden = true;
+}
+
+function renderTextSizeOptions(container) {
+  if (!container) return;
+  const currentSize = String(elements.formatSizeValue?.textContent || "16");
+  container.replaceChildren(
+    ...TEXT_SIZE_OPTIONS.map((size) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.formatSize = String(size);
+      button.className = "format-size-option";
+      button.classList.toggle("active", String(size) === currentSize);
+      button.textContent = String(size);
+      return button;
+    })
+  );
+}
+
+function setFormatSizeValue(value) {
+  const size = normalizeTextSize(value);
+  if (elements.formatSizeValue) elements.formatSizeValue.textContent = String(size);
+}
+
 function applyTextFormat(command, value = "", options = {}) {
   const editor = getActiveRichEditor();
   const note = getSelectedNote();
@@ -3646,10 +3832,12 @@ function applyTextFormat(command, value = "", options = {}) {
 
   restoreRichSelection(editor);
   if (command === "fontSize") {
-    if (!applyInlineStyleToSelection(editor, { fontSize: normalizeTextSize(value) + "px" }) && !options.silent) {
+    const size = normalizeTextSize(value);
+    if (!applyInlineStyleToSelection(editor, { fontSize: size + "px" }) && !options.silent) {
       showToast("Selecione o texto para alterar o tamanho");
       return;
     }
+    setFormatSizeValue(size);
   } else if (command === "foreColor") {
     if (!applyInlineStyleToSelection(editor, { color: normalizeAccent(value) }) && !options.silent) {
       showToast("Selecione o texto para alterar a cor");
@@ -3669,12 +3857,19 @@ function renderTextFormatToolbar(note = getSelectedNote()) {
   placeTextFormatToolbar();
   const enabled = Boolean(note && !note.trashed && !note.finalized && note.type !== "goal");
   elements.textFormatToolbar.hidden = !enabled;
-  if (!enabled) return;
+  if (!enabled) {
+    closeFormatSizeMenu();
+    closeTextFormatMenu();
+    return;
+  }
+  renderTextSizeOptions(elements.formatSizeMenu);
+  renderTextSizeOptions(elements.textFormatSizeOptions);
   renderColorButtons(elements.formatColorOptions, ACCENT_COLORS, preferences.accent, (color) => applyTextFormat("foreColor", color));
 }
 
 function placeTextFormatToolbar() {
   if (!elements.textFormatToolbar) return;
+  placeRichTextMenus();
   if (isMobileLayout()) {
     if (elements.textFormatToolbar.parentElement !== document.body) {
       document.body.append(elements.textFormatToolbar);
@@ -3687,10 +3882,16 @@ function placeTextFormatToolbar() {
   }
 }
 
+function placeRichTextMenus() {
+  [elements.formatSizeMenu, elements.textFormatMenu].forEach((menu) => {
+    if (menu && menu.parentElement !== document.body) document.body.append(menu);
+  });
+}
+
 function persistRichEditor(editor) {
   const note = getSelectedNote();
   if (!canEditNoteContent(note)) return;
-  const html = sanitizeRichHtml(editor.innerHTML);
+  const html = sanitizeRichHtml(editor.innerHTML, { trim: false });
   const text = getPlainTextFromHtml(html);
   const kind = editor.dataset.richKind;
 
@@ -3726,7 +3927,7 @@ function persistRichEditor(editor) {
 function normalizeEditorMarkup(editor) {
   if (!editor) return;
   convertLegacyFontTags(editor);
-  const clean = sanitizeRichHtml(editor.innerHTML);
+  const clean = sanitizeRichHtml(editor.innerHTML, { trim: false });
   if (editor.innerHTML !== clean) editor.innerHTML = clean;
 }
 
@@ -3743,18 +3944,19 @@ function convertLegacyFontTags(root, forcedStyle = {}) {
 }
 
 function getRichBlockHtml(block) {
-  const html = sanitizeRichHtml(block?.html || "");
+  const html = sanitizeRichHtml(block?.html || "", { trim: false });
   if (html) return html;
   return plainTextToHtml(block?.text || "");
 }
 
 function getRichItemHtml(item) {
-  const html = sanitizeRichHtml(item?.html || "");
+  const html = sanitizeRichHtml(item?.html || "", { trim: false });
   if (html) return html;
   return plainTextToHtml(item?.text || "");
 }
 
-function sanitizeRichHtml(html = "") {
+function sanitizeRichHtml(html = "", options = {}) {
+  const shouldTrim = options.trim !== false;
   const container = document.createElement("div");
   container.innerHTML = String(html || "");
   container.querySelectorAll("script, style, iframe, object, embed, link, meta").forEach((node) => node.remove());
@@ -3789,10 +3991,11 @@ function sanitizeRichHtml(html = "") {
     if (!span.textContent && !span.querySelector("br")) span.remove();
   });
 
-  return container.innerHTML
-    .replace(/<div><br><\/div>/gi, "<br>")
-    .replace(/^(<br\s*\/?>)+|(<br\s*\/?>)+$/gi, "")
-    .trim();
+  let clean = container.innerHTML.replace(/<div><br><\/div>/gi, "<br>");
+  if (shouldTrim) {
+    clean = clean.replace(/^(<br\s*\/?>)+|(<br\s*\/?>)+$/gi, "").trim();
+  }
+  return clean;
 }
 
 function plainTextToHtml(text = "") {
@@ -4552,12 +4755,23 @@ function openAccountModal(panel = "login") {
   elements.modalLayer.hidden = false;
   elements.accountModal.hidden = false;
   elements.settingsModal.hidden = true;
+  elements.profileEditDialog.hidden = true;
+  elements.folderEditDialog.hidden = true;
+  document.body.classList.remove("mobile-settings-page");
+  elements.closeSettingsModal.innerHTML = "<span>‹</span> Voltar ao aplicativo";
   setActiveAccountPanel(panel);
   closeSidebar();
+  updateMobileLayoutState();
   setTimeout(() => {
     const target = panel === "signup" ? elements.signupNameInput : elements.loginIdentifierInput;
     target.focus();
   }, 0);
+}
+
+function openProfileAccountEntry(event) {
+  event?.preventDefault();
+  event?.stopPropagation();
+  openAccountModal("login");
 }
 
 function setActiveAccountPanel(panel) {
@@ -4665,8 +4879,10 @@ function openSettingsModal(tab = "profile") {
   elements.modalLayer.hidden = false;
   elements.settingsModal.hidden = false;
   elements.accountModal.hidden = true;
-  document.body.classList.add("mobile-settings-page");
-  if (isMobileLayout()) elements.closeSettingsModal.innerHTML = `<span>‹</span> ${mobileSettingsReturnScreen === "list" ? getViewTitle() : mobileSettingsReturnScreen === "editor" ? "Nota" : "Pastas"}`;
+  document.body.classList.toggle("mobile-settings-page", isMobileLayout());
+  elements.closeSettingsModal.innerHTML = isMobileLayout()
+    ? `<span>‹</span> ${mobileSettingsReturnScreen === "list" ? getViewTitle() : mobileSettingsReturnScreen === "editor" ? "Nota" : "Pastas"}`
+    : "<span>‹</span> Voltar ao aplicativo";
   setActiveSettingsTab(tab);
   renderSettings();
   closeSidebar();
