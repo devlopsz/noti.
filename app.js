@@ -5193,15 +5193,14 @@ async function handleBackupRestore() {
     const parsed = JSON.parse(await readFileAsText(file));
     const nextState = extractBackupState(parsed);
     const nextPreferences = extractBackupPreferences(parsed);
-    const noteCount = nextState.notes.length;
-    const folderCount = nextState.folders.length;
+    const merge = buildBackupMerge(nextState);
     const shouldRestore = confirm(
-      `Recuperar este backup com ${noteCount} ${noteCount === 1 ? "nota" : "notas"} e ${folderCount} ${folderCount === 1 ? "pasta" : "pastas"}?\n\nAs notas atuais deste navegador serão substituídas.`
+      `Recuperar este backup?\n\n${merge.stats.added} ${merge.stats.added === 1 ? "nota nova será adicionada" : "notas novas serão adicionadas"}.\n${merge.stats.replaced} ${merge.stats.replaced === 1 ? "nota com mesmo nome será substituída" : "notas com mesmo nome serão substituídas"}.\n\nAs outras notas deste navegador serão mantidas.`
     );
     if (!shouldRestore) return;
 
-    restoreBackupData(nextState, nextPreferences);
-    showToast("Backup recuperado");
+    restoreBackupData(merge.state, nextPreferences);
+    showToast(`Backup recuperado: ${merge.stats.added} adicionadas, ${merge.stats.replaced} substituídas`);
   } catch (error) {
     console.warn("Backup inválido.", error);
     showToast("Arquivo de backup inválido");
@@ -5221,6 +5220,100 @@ function extractBackupPreferences(payload) {
     return null;
   }
   return normalizePreferencesData(payload.preferences, preferences);
+}
+
+function buildBackupMerge(nextState) {
+  const mergedFolders = clonePlainData(state.folders);
+  const mergedNotes = clonePlainData(state.notes);
+  const folderIdMap = new Map();
+  const folderByName = new Map();
+  const usedFolderIds = new Set(mergedFolders.map((folder) => folder.id));
+  let nextFolderOrder = Math.max(-1, ...mergedFolders.map((folder) => Number.isFinite(folder.order) ? folder.order : -1)) + 1;
+  let foldersAdded = 0;
+  let foldersUpdated = 0;
+
+  mergedFolders.forEach((folder) => {
+    const key = getBackupNameKey(folder.name);
+    if (key && !folderByName.has(key)) folderByName.set(key, folder);
+  });
+
+  nextState.folders.forEach((folder) => {
+    const key = getBackupNameKey(folder.name);
+    const existing = key ? folderByName.get(key) : null;
+    if (existing) {
+      existing.color = folder.color || existing.color;
+      folderIdMap.set(folder.id, existing.id);
+      foldersUpdated += 1;
+      return;
+    }
+
+    const nextFolder = {
+      ...clonePlainData(folder),
+      id: ensureUniqueBackupId(folder.id, usedFolderIds),
+      order: nextFolderOrder,
+    };
+    nextFolderOrder += 1;
+    folderIdMap.set(folder.id, nextFolder.id);
+    mergedFolders.push(nextFolder);
+    if (key) folderByName.set(key, nextFolder);
+    foldersAdded += 1;
+  });
+
+  const noteIndexByName = new Map();
+  const usedNoteIds = new Set(mergedNotes.map((note) => note.id));
+  let added = 0;
+  let replaced = 0;
+
+  mergedNotes.forEach((note, index) => {
+    const key = getBackupNoteKey(note);
+    if (key && !noteIndexByName.has(key)) noteIndexByName.set(key, index);
+  });
+
+  nextState.notes.forEach((note) => {
+    const nextNote = clonePlainData(note);
+    nextNote.folderId = mapBackupFolderId(note.folderId, folderIdMap, usedFolderIds);
+    const key = getBackupNoteKey(nextNote);
+
+    if (key && noteIndexByName.has(key)) {
+      const index = noteIndexByName.get(key);
+      nextNote.id = mergedNotes[index].id;
+      mergedNotes[index] = nextNote;
+      replaced += 1;
+      return;
+    }
+
+    nextNote.id = ensureUniqueBackupId(nextNote.id, usedNoteIds);
+    mergedNotes.push(nextNote);
+    if (key) noteIndexByName.set(key, mergedNotes.length - 1);
+    added += 1;
+  });
+
+  return {
+    state: normalizeState({ folders: mergedFolders, notes: mergedNotes }),
+    stats: { added, replaced, foldersAdded, foldersUpdated },
+  };
+}
+
+function getBackupNoteKey(note) {
+  return getBackupNameKey(note?.title);
+}
+
+function getBackupNameKey(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR");
+}
+
+function ensureUniqueBackupId(id, usedIds) {
+  let nextId = String(id || "").trim();
+  while (!nextId || usedIds.has(nextId)) nextId = cryptoId();
+  usedIds.add(nextId);
+  return nextId;
+}
+
+function mapBackupFolderId(folderId, folderIdMap, usedFolderIds) {
+  const currentId = String(folderId || "");
+  if (!currentId) return "";
+  if (folderIdMap.has(currentId)) return folderIdMap.get(currentId);
+  return usedFolderIds.has(currentId) ? currentId : "";
 }
 
 function restoreBackupData(nextState, nextPreferences = null) {
