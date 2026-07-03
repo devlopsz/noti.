@@ -7173,17 +7173,39 @@ body.sidebar-collapsed .brand-mark {
   white-space: nowrap;
 }
 
-.cursor-settings-card {
+.cursor-settings-card,
+.autocorrect-settings-card {
   min-height: 64px;
 }
 
-.cursor-ui-row {
+.cursor-ui-row,
+.autocorrect-ui-row {
   width: 100%;
   cursor: inherit;
 }
 
-.cursor-toggle {
+.cursor-toggle,
+.autocorrect-toggle {
   justify-content: flex-end;
+}
+
+.setting-label-stack {
+  display: grid;
+  gap: 4px;
+}
+
+.setting-label-stack strong {
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1.15;
+}
+
+.setting-label-stack small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.25;
 }
 
 body.custom-cursor,

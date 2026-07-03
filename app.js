@@ -24,6 +24,85 @@ const ACCENT_COLORS = ["#b98500", "#007aff", "#34c759", "#ff3b30", "#af52de", "#
 const FOLDER_COLORS = ACCENT_COLORS.slice();
 const TEXT_SIZE_OPTIONS = [14, 16, 18, 22, 28, 34];
 const DEFAULT_DRAWING_TOOL = { mode: "pen", color: "#b98500", width: 6, context: "page", blockId: "" };
+const AUTOCORRECT_WORDS = new Map(Object.entries({
+  acao: "ação",
+  acoes: "ações",
+  ai: "aí",
+  alem: "além",
+  aniversario: "aniversário",
+  anuncios: "anúncios",
+  apos: "após",
+  aquivo: "arquivo",
+  arquivoo: "arquivo",
+  area: "área",
+  areas: "áreas",
+  ate: "até",
+  audio: "áudio",
+  audios: "áudios",
+  automatico: "automático",
+  automaticos: "automáticos",
+  basico: "básico",
+  calendario: "calendário",
+  categoria: "categoria",
+  celula: "célula",
+  conteudo: "conteúdo",
+  conteudos: "conteúdos",
+  configuracao: "configuração",
+  configuracoes: "configurações",
+  concerteza: "com certeza",
+  criacao: "criação",
+  derrepente: "de repente",
+  denovo: "de novo",
+  dificil: "difícil",
+  edicao: "edição",
+  entao: "então",
+  estatistica: "estatística",
+  estatisticas: "estatísticas",
+  excluir: "excluir",
+  facil: "fácil",
+  faser: "fazer",
+  fas: "faz",
+  finalizacao: "finalização",
+  funcao: "função",
+  funcoes: "funções",
+  historico: "histórico",
+  inicio: "início",
+  ja: "já",
+  la: "lá",
+  lixeira: "lixeira",
+  midia: "mídia",
+  midias: "mídias",
+  necessario: "necessário",
+  nao: "não",
+  notificacao: "notificação",
+  notificacoes: "notificações",
+  opcao: "opção",
+  opcoes: "opções",
+  organizacao: "organização",
+  personalizacao: "personalização",
+  possivel: "possível",
+  proximo: "próximo",
+  proximos: "próximos",
+  rapida: "rápida",
+  rapido: "rápido",
+  recuperacao: "recuperação",
+  restauracao: "restauração",
+  seria: "seria",
+  serio: "sério",
+  so: "só",
+  tambem: "também",
+  usuario: "usuário",
+  usuarios: "usuários",
+  ultima: "última",
+  ultimas: "últimas",
+  ultimo: "último",
+  ultimos: "últimos",
+  video: "vídeo",
+  videos: "vídeos",
+  voce: "você",
+  voces: "vocês",
+}));
+const AUTOCORRECT_BOUNDARY_RE = /[\s.,;:!?()[\]{}"“”'‘’/\\-]/u;
 const PHONE_COUNTRIES = [
   { code: "BR", name: "Brasil", dial: "+55", flag: "\uD83C\uDDE7\uD83C\uDDF7" },
   { code: "US", name: "Estados Unidos", dial: "+1", flag: "\uD83C\uDDFA\uD83C\uDDF8" },
@@ -107,6 +186,7 @@ let mobileSettingsReturnScreen = "folders";
 let mobileNoteMenuTargetId = "";
 let mobileNotePressTimer = 0;
 let mobileNotePointer = null;
+let isApplyingAutocorrect = false;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -287,6 +367,7 @@ const elements = {
   fontImportInput: $("#fontImportInput"),
   resetFontButton: $("#resetFontButton"),
   cursorToggleInput: $("#cursorToggleInput"),
+  autocorrectToggleInput: $("#autocorrectToggleInput"),
   fontNameLabel: $("#fontNameLabel"),
   folderDefaultColors: $("#folderDefaultColors"),
   toolbarOrderList: $("#toolbarOrderList"),
@@ -376,6 +457,7 @@ function bindEvents() {
   elements.fontImportInput.addEventListener("change", handleFontImport);
   elements.resetFontButton.addEventListener("click", resetCustomFont);
   elements.cursorToggleInput.addEventListener("change", toggleCustomCursor);
+  elements.autocorrectToggleInput?.addEventListener("change", toggleAutocorrectPreference);
   elements.topToolbar.addEventListener("contextmenu", openToolbarContextMenu);
   elements.topToolbar.addEventListener("dragstart", startToolbarDrag);
   elements.topToolbar.addEventListener("dragover", handleToolbarDragOver);
@@ -400,6 +482,8 @@ function bindEvents() {
   elements.textFormatMenu?.addEventListener("click", handleTextFormatMenuClick);
   elements.siteContextMenu?.addEventListener("click", handleSiteContextMenuClick);
   document.addEventListener("selectionchange", handleRichSelectionChange);
+  document.addEventListener("input", handleAutocorrectInput, true);
+  document.addEventListener("blur", handleAutocorrectBlur, true);
   document.addEventListener("click", (event) => {
     const toolbarAction = event.target.closest("[data-toolbar-menu]");
     if (toolbarAction) {
@@ -2410,6 +2494,243 @@ function toggleCustomCursor() {
   applyCustomCursor();
   showToast(preferences.customCursor ? "Cursor UI ativado" : "Cursor UI desativado");
 }
+
+function applyAutocorrectPreference() {
+  document.body.classList.toggle("autocorrect-enabled", preferences.autocorrect === true);
+  if (elements.autocorrectToggleInput) {
+    elements.autocorrectToggleInput.checked = preferences.autocorrect === true;
+  }
+}
+
+function toggleAutocorrectPreference() {
+  preferences.autocorrect = elements.autocorrectToggleInput?.checked === true;
+  savePreferences();
+  applyAutocorrectPreference();
+  showToast(preferences.autocorrect ? "Corretor automático ativado" : "Corretor automático desativado");
+}
+
+function handleAutocorrectInput(event) {
+  if (!shouldRunAutocorrect(event)) return;
+  const target = event.target;
+  const plainField = getAutocorrectPlainField(target);
+  if (plainField) {
+    applyAutocorrectToPlainField(plainField, { force: false, dispatch: false });
+    return;
+  }
+
+  const editor = getAutocorrectRichEditor(target);
+  if (editor) applyAutocorrectToRichEditor(editor, { force: false, dispatch: false });
+}
+
+function handleAutocorrectBlur(event) {
+  if (isApplyingAutocorrect || preferences.autocorrect !== true) return;
+  const target = event.target;
+  const plainField = getAutocorrectPlainField(target);
+  if (plainField) {
+    applyAutocorrectToPlainField(plainField, { force: true, dispatch: true });
+    return;
+  }
+
+  const editor = getAutocorrectRichEditor(target);
+  if (editor) applyAutocorrectToRichEditor(editor, { force: true, dispatch: true });
+}
+
+function shouldRunAutocorrect(event) {
+  if (isApplyingAutocorrect || preferences.autocorrect !== true || event.isComposing) return false;
+  if (event.inputType?.startsWith("delete")) return false;
+  return true;
+}
+
+function getAutocorrectPlainField(target) {
+  const field = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement ? target : null;
+  if (!field) return null;
+  if (field.disabled || field.readOnly) return null;
+  if (!field.matches("#titleInput, #bodyInput, #newItemInput, #newShoppingItemInput, #goalNameInput, #goalCategoryInput")) return null;
+  return field;
+}
+
+function getAutocorrectRichEditor(target) {
+  const element = target?.nodeType === Node.ELEMENT_NODE ? target : target?.parentElement;
+  const editor = element?.closest?.("[data-rich-editor]");
+  if (!editor?.isContentEditable) return null;
+  return editor;
+}
+
+function applyAutocorrectToPlainField(field, options = {}) {
+  const force = options.force === true;
+  const shouldDispatch = options.dispatch === true;
+  const selectionStart = typeof field.selectionStart === "number" ? field.selectionStart : field.value.length;
+  const selectionEnd = typeof field.selectionEnd === "number" ? field.selectionEnd : selectionStart;
+  if (!force && selectionStart !== selectionEnd) return false;
+  const result = force
+    ? correctAutocorrectText(field.value, selectionStart)
+    : correctPreviousAutocorrectWord(field.value, selectionStart);
+  if (!result.changed) return false;
+
+  field.value = result.text;
+  const caret = Math.max(0, Math.min(result.caret, field.value.length));
+  if (document.activeElement === field && typeof field.setSelectionRange === "function") {
+    field.setSelectionRange(caret, caret);
+  }
+  if (shouldDispatch) dispatchAutocorrectInput(field);
+  return true;
+}
+
+function applyAutocorrectToRichEditor(editor, options = {}) {
+  const force = options.force === true;
+  const shouldDispatch = options.dispatch === true;
+  const changed = force ? correctAutocorrectTextNodes(editor) : correctRichWordAtCaret(editor);
+  if (!changed) return false;
+  if (shouldDispatch) dispatchAutocorrectInput(editor);
+  return true;
+}
+
+function correctRichWordAtCaret(editor) {
+  const selection = window.getSelection?.();
+  if (!selection?.rangeCount || !selection.isCollapsed) return false;
+  const range = selection.getRangeAt(0);
+  if (!editor.contains(range.startContainer)) return false;
+  const position = getAutocorrectTextPosition(editor, range);
+  if (!position?.node) return false;
+  const result = correctPreviousAutocorrectWord(position.node.nodeValue || "", position.offset);
+  if (!result.changed) return false;
+  position.node.nodeValue = result.text;
+  const nextRange = document.createRange();
+  nextRange.setStart(position.node, Math.max(0, Math.min(result.caret, position.node.nodeValue.length)));
+  nextRange.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(nextRange);
+  rememberRichTextEditor(editor);
+  return true;
+}
+
+function getAutocorrectTextPosition(editor, range) {
+  if (range.startContainer.nodeType === Node.TEXT_NODE) {
+    return { node: range.startContainer, offset: range.startOffset };
+  }
+
+  const child = range.startContainer.childNodes?.[Math.max(0, range.startOffset - 1)];
+  const textNode = getLastTextNode(child) || getPreviousTextNode(range.startContainer, editor);
+  if (!textNode) return null;
+  return { node: textNode, offset: textNode.nodeValue.length };
+}
+
+function getLastTextNode(node) {
+  if (!node) return null;
+  if (node.nodeType === Node.TEXT_NODE) return node;
+  for (let index = node.childNodes.length - 1; index >= 0; index -= 1) {
+    const childText = getLastTextNode(node.childNodes[index]);
+    if (childText) return childText;
+  }
+  return null;
+}
+
+function getPreviousTextNode(node, root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let previous = null;
+  let current = walker.nextNode();
+  while (current) {
+    if (current === node || current.parentElement === node) return previous;
+    if (isNodeBefore(current, node)) previous = current;
+    current = walker.nextNode();
+  }
+  return previous;
+}
+
+function isNodeBefore(candidate, node) {
+  const position = candidate.compareDocumentPosition(node);
+  return Boolean(position & Node.DOCUMENT_POSITION_FOLLOWING);
+}
+
+function correctAutocorrectTextNodes(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let changed = false;
+  let node = walker.nextNode();
+  while (node) {
+    const result = correctAutocorrectText(node.nodeValue || "", Number.MAX_SAFE_INTEGER);
+    if (result.changed) {
+      node.nodeValue = result.text;
+      changed = true;
+    }
+    node = walker.nextNode();
+  }
+  return changed;
+}
+
+function correctPreviousAutocorrectWord(text, caretIndex) {
+  if (!text || caretIndex <= 0) return { text, caret: caretIndex, changed: false };
+  if (!AUTOCORRECT_BOUNDARY_RE.test(text.charAt(caretIndex - 1))) {
+    return { text, caret: caretIndex, changed: false };
+  }
+  const before = text.slice(0, caretIndex);
+  const after = text.slice(caretIndex);
+  const match = before.match(/(\p{L}+)([^\p{L}]*)$/u);
+  if (!match) return { text, caret: caretIndex, changed: false };
+  const word = match[1];
+  const trailing = match[2] || "";
+  const correction = getAutocorrectReplacement(word);
+  if (!correction || correction === word) return { text, caret: caretIndex, changed: false };
+  const wordStart = before.length - trailing.length - word.length;
+  const correctedText = `${text.slice(0, wordStart)}${correction}${trailing}${after}`;
+  return {
+    text: correctedText,
+    caret: caretIndex + correction.length - word.length,
+    changed: true,
+  };
+}
+
+function correctAutocorrectText(text, caretIndex = 0) {
+  let changed = false;
+  let deltaBeforeCaret = 0;
+  const correctedText = String(text || "").replace(/\p{L}+/gu, (word, offset) => {
+    const correction = getAutocorrectReplacement(word);
+    if (!correction || correction === word) return word;
+    changed = true;
+    if (offset < caretIndex) deltaBeforeCaret += correction.length - word.length;
+    return correction;
+  });
+  return {
+    text: correctedText,
+    caret: Math.max(0, Math.min(correctedText.length, caretIndex + deltaBeforeCaret)),
+    changed,
+  };
+}
+
+function getAutocorrectReplacement(word) {
+  const key = removeDiacritics(word).toLocaleLowerCase("pt-BR");
+  const replacement = AUTOCORRECT_WORDS.get(key);
+  if (!replacement) return "";
+  return matchAutocorrectCase(word, replacement);
+}
+
+function removeDiacritics(value) {
+  return String(value || "").normalize("NFD").replace(/\p{Diacritic}/gu, "");
+}
+
+function matchAutocorrectCase(original, replacement) {
+  const letters = original.replace(/[^\p{L}]/gu, "");
+  if (letters && letters === letters.toLocaleUpperCase("pt-BR")) {
+    return replacement.toLocaleUpperCase("pt-BR");
+  }
+  const first = letters.charAt(0);
+  const rest = letters.slice(1);
+  if (first && first === first.toLocaleUpperCase("pt-BR") && rest === rest.toLocaleLowerCase("pt-BR")) {
+    return replacement
+      .split(" ")
+      .map((part) => part ? `${part.charAt(0).toLocaleUpperCase("pt-BR")}${part.slice(1)}` : part)
+      .join(" ");
+  }
+  return replacement;
+}
+
+function dispatchAutocorrectInput(target) {
+  isApplyingAutocorrect = true;
+  try {
+    target.dispatchEvent(new Event("input", { bubbles: true }));
+  } finally {
+    isApplyingAutocorrect = false;
+  }
+}
 function renderGoal(note) {
   if (!elements.goalEditor || note.type !== "goal") return;
   const goal = ensureGoal(note);
@@ -4230,6 +4551,7 @@ function getDefaultPreferences() {
     toolbarLocked: false,
     toolbarDrawingAdded: true,
     customCursor: true,
+    autocorrect: false,
     fontFamily: "",
     fontFileName: "",
     fontDataUrl: "",
@@ -4249,6 +4571,7 @@ function normalizePreferencesData(saved, fallback = getDefaultPreferences()) {
     toolbarLocked: Boolean(saved.toolbarLocked),
     toolbarDrawingAdded: Boolean(saved.toolbarDrawingAdded),
     customCursor: saved.customCursor !== false,
+    autocorrect: saved.autocorrect === true,
     sidebarCollapsed: Boolean(saved.sidebarCollapsed),
     fontFamily: typeof saved.fontFamily === "string" ? saved.fontFamily : fallback.fontFamily,
     fontFileName: typeof saved.fontFileName === "string" ? saved.fontFileName : fallback.fontFileName,
@@ -4284,6 +4607,7 @@ function applyPreferences() {
   document.documentElement.style.setProperty("--accent-soft", hexToRgba(accent, 0.15));
   applyCustomFont();
   applyCustomCursor();
+  applyAutocorrectPreference();
   applyToolbarOrder();
   applySidebarCollapsed();
 }
@@ -4365,6 +4689,7 @@ function renderAppearanceControls() {
   elements.resetFontButton.disabled = !hasCustomFont;
   elements.resetFontButton.setAttribute("aria-disabled", String(!hasCustomFont));
   elements.cursorToggleInput.checked = preferences.customCursor !== false;
+  if (elements.autocorrectToggleInput) elements.autocorrectToggleInput.checked = preferences.autocorrect === true;
   if (elements.themeCurrentIcon) elements.themeCurrentIcon.setAttribute("href", themeOption.icon);
   if (elements.themeCurrentLabel) elements.themeCurrentLabel.textContent = themeOption.label;
   renderColorButtons(elements.accentCarousel, ACCENT_COLORS, preferences.accent, (color) => setAccentPreference(color));
