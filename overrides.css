@@ -23,10 +23,10 @@
   }
 
   html body:not(.mobile-layout) .note-card {
-    min-height: 84px !important;
+    min-height: 92px !important;
     border: 1px solid transparent !important;
     border-radius: 18px !important;
-    padding: 10px 12px 10px 13px !important;
+    padding: 13px 13px 13px 14px !important;
     gap: 10px !important;
     align-items: center !important;
     overflow: hidden !important;
@@ -45,8 +45,8 @@
 
   html body:not(.mobile-layout) .note-card p {
     min-height: 0 !important;
-    margin: 3px 0 6px !important;
-    line-height: 1.28 !important;
+    margin: 4px 0 8px !important;
+    line-height: 1.32 !important;
   }
 
   html body:not(.mobile-layout) .goal-note-card {
