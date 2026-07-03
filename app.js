@@ -200,6 +200,7 @@ let mobileSettingsReturnScreen = "folders";
 let mobileNoteMenuTargetId = "";
 let mobileNotePressTimer = 0;
 let mobileNotePointer = null;
+let noteHighlightTargetId = "";
 let isApplyingAutocorrect = false;
 
 const $ = (selector) => document.querySelector(selector);
@@ -236,6 +237,8 @@ const elements = {
   mobileFinishButton: $("#mobileFinishButton"),
   mobileNoteActionMenu: $("#mobileNoteActionMenu"),
   mobileFolderMoveMenu: $("#mobileFolderMoveMenu"),
+  noteHighlightMenu: $("#noteHighlightMenu"),
+  noteHighlightColors: $("#noteHighlightColors"),
   siteContextMenu: $("#siteContextMenu"),
   mobileSearchInput: $("#mobileSearchInput"),
   createMenuButton: $("#createMenuButton"),
@@ -443,6 +446,7 @@ function bindEvents() {
   elements.mobileMoreMenu?.addEventListener("click", handleMobileMoreMenuClick);
   elements.mobileNoteActionMenu.addEventListener("click", handleMobileNoteMenuClick);
   elements.mobileFolderMoveMenu.addEventListener("click", handleMobileFolderMoveMenuClick);
+  elements.noteHighlightMenu?.addEventListener("click", handleNoteHighlightMenuClick);
   elements.openSidebarButton.addEventListener("click", openSidebar);
   elements.closeSidebarButton.addEventListener("click", closeSidebar);
   elements.sidebarScrim.addEventListener("click", closeSidebar);
@@ -528,6 +532,7 @@ function bindEvents() {
     if (!event.target.closest("#mobileMoreMenu, #mobileMoreButton")) closeMobileMoreMenu();
     if (!event.target.closest("#mobileNoteActionMenu")) closeMobileNoteActionMenu();
     if (!event.target.closest("#mobileFolderMoveMenu")) closeMobileFolderMoveMenu();
+    if (!event.target.closest("#noteHighlightMenu")) closeNoteHighlightMenu();
     if (!event.target.closest("#siteContextMenu")) closeSiteContextMenu();
     if (!event.target.closest("#formatSizeMenu, #formatSizeButton")) closeFormatSizeMenu();
     if (!event.target.closest("#textFormatMenu")) closeTextFormatMenu();
@@ -962,6 +967,7 @@ function normalizeState(rawState) {
       currency: typeof note.currency === "string" ? note.currency : "BRL",
       folderId: note.folderId || "",
       pinned: Boolean(note.pinned),
+      highlightColor: normalizeOptionalAccent(note.highlightColor),
       trashed: Boolean(note.trashed),
       archived: Boolean(note.archived),
       finalized: Boolean(note.finalized),
@@ -1087,9 +1093,13 @@ function renderNotes() {
     const folder = getFolder(note.folderId);
     card.dataset.noteId = note.id;
     card.classList.toggle("active", note.id === selectedNoteId);
-    card.classList.toggle("checklist-complete", isChecklistComplete(note));
+    const complete = isChecklistComplete(note);
+    const highlightColor = normalizeOptionalAccent(note.highlightColor);
+    card.classList.toggle("note-highlighted", Boolean(highlightColor));
+    if (highlightColor) card.style.setProperty("--note-highlight-color", highlightColor);
     card.querySelector(".note-kind").textContent = getNoteKindLabel(note);
     card.querySelector(".note-pin").hidden = !note.pinned;
+    card.querySelector(".note-complete").hidden = !complete;
     card.querySelector("h3").textContent = note.title.trim() || "Sem título";
     card.querySelector("p").textContent = getNotePreview(note);
     if (note.type === "goal") renderGoalNoteCard(card, note);
@@ -1211,17 +1221,20 @@ function resetMobileSwipeCard(card) {
 
 function showMobileNoteActionMenu(noteId, card, point = null) {
   closeMobileFolderMoveMenu();
+  closeNoteHighlightMenu();
   closeSiteContextMenu();
   mobileNoteMenuTargetId = noteId;
   const note = state.notes.find((candidate) => candidate.id === noteId);
   if (!note) return;
   elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="restore"]').hidden = !note.trashed;
   elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="pin"]').hidden = note.trashed;
+  elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="highlight"]').hidden = note.trashed;
   elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="archive"]').hidden = note.trashed;
   elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="move"]').hidden = note.trashed;
   elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="edit"]').hidden = note.trashed;
   elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="delete"]').hidden = note.trashed;
   elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="pin"] span').textContent = note.pinned ? "Desafixar" : "Fixar";
+  elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="highlight"] span').textContent = note.highlightColor ? "Alterar destaque" : "Destacar";
   elements.mobileNoteActionMenu.hidden = false;
   elements.mobileNoteActionMenu.style.left = "0px";
   elements.mobileNoteActionMenu.style.top = "0px";
@@ -1249,6 +1262,10 @@ function handleMobileNoteMenuClick(event) {
     showMobileFolderMoveMenu(noteId);
     return;
   }
+  if (action === "highlight") {
+    showNoteHighlightMenu(noteId);
+    return;
+  }
   if (action === "pin") pinNoteById(noteId);
   if (action === "archive") archiveNoteById(noteId);
   if (action === "delete") deleteNoteById(noteId);
@@ -1263,6 +1280,56 @@ function handleMobileNoteMenuClick(event) {
     showMobileScreen("editor");
     render();
   }
+}
+
+function showNoteHighlightMenu(noteId) {
+  const note = state.notes.find((candidate) => candidate.id === noteId);
+  if (!note || note.trashed || !elements.noteHighlightMenu || !elements.noteHighlightColors) return;
+  closeMobileFolderMoveMenu();
+  closeSiteContextMenu();
+  noteHighlightTargetId = noteId;
+  const currentHighlight = normalizeOptionalAccent(note.highlightColor);
+  renderColorButtons(elements.noteHighlightColors, ACCENT_COLORS, currentHighlight || preferences.accent, (color) => setNoteHighlightColor(noteId, color));
+  if (!currentHighlight) {
+    elements.noteHighlightColors.querySelectorAll(".color-swatch.active").forEach((button) => button.classList.remove("active"));
+  }
+  const clearButton = elements.noteHighlightMenu.querySelector("[data-note-highlight-clear]");
+  if (clearButton) clearButton.hidden = !currentHighlight;
+  elements.noteHighlightMenu.hidden = false;
+  elements.noteHighlightMenu.style.left = "0px";
+  elements.noteHighlightMenu.style.top = "0px";
+  const source = document.querySelector(`.note-card[data-note-id="${CSS.escape(noteId)}"]`);
+  const rect = source?.getBoundingClientRect?.();
+  const bounds = elements.noteHighlightMenu.getBoundingClientRect();
+  const left = (rect?.left || 18) + 18;
+  const top = (rect?.top || 110) + 18;
+  elements.noteHighlightMenu.style.left = `${Math.max(12, Math.min(window.innerWidth - bounds.width - 12, left))}px`;
+  elements.noteHighlightMenu.style.top = `${Math.max(12, Math.min(window.innerHeight - bounds.height - 12, top))}px`;
+}
+
+function closeNoteHighlightMenu() {
+  if (!elements.noteHighlightMenu) return;
+  elements.noteHighlightMenu.hidden = true;
+  noteHighlightTargetId = "";
+}
+
+function handleNoteHighlightMenuClick(event) {
+  event.stopPropagation();
+  const clearButton = event.target.closest("[data-note-highlight-clear]");
+  if (clearButton && noteHighlightTargetId) {
+    setNoteHighlightColor(noteHighlightTargetId, "");
+  }
+}
+
+function setNoteHighlightColor(noteId, color) {
+  const note = state.notes.find((candidate) => candidate.id === noteId);
+  if (!note || note.trashed) return;
+  note.highlightColor = normalizeOptionalAccent(color);
+  note.updatedAt = Date.now();
+  saveState();
+  closeNoteHighlightMenu();
+  renderNotes();
+  showToast(note.highlightColor ? "Nota destacada" : "Destaque removido");
 }
 
 function showMobileFolderMoveMenu(noteId) {
@@ -1323,7 +1390,7 @@ function handleAppContextMenu(event) {
   }
 
   if (isMobileLayout()) return;
-  if (isNativeEditableTarget(targetElement) || targetElement?.closest?.("#toolbarContextMenu, #mobileNoteActionMenu, #siteContextMenu, #formatSizeMenu, #textFormatMenu, .app-modal, .profile-edit-dialog, .folder-edit-dialog, .draw-tool-popover")) return;
+  if (isNativeEditableTarget(targetElement) || targetElement?.closest?.("#toolbarContextMenu, #mobileNoteActionMenu, #mobileFolderMoveMenu, #noteHighlightMenu, #siteContextMenu, #formatSizeMenu, #textFormatMenu, .app-modal, .profile-edit-dialog, .folder-edit-dialog, .draw-tool-popover")) return;
 
   const noteCard = targetElement?.closest?.(".note-card");
   if (noteCard?.dataset.noteId) {
@@ -3073,6 +3140,7 @@ function createNote(type) {
     drawingBlocks: [],
     folderId,
     pinned: false,
+    highlightColor: "",
     trashed: false,
     archived: false,
     finalized: false,
@@ -5280,6 +5348,11 @@ function normalizeAccent(value) {
   const fallback = "#b98500";
   const color = String(value || fallback).trim();
   return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(color) ? color : fallback;
+}
+
+function normalizeOptionalAccent(value) {
+  const color = String(value || "").trim();
+  return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(color) ? color : "";
 }
 
 function hexToRgba(hex, alpha) {

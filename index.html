@@ -323,11 +323,17 @@
         </div>
         <div class="mobile-note-action-menu" id="mobileNoteActionMenu" hidden>
           <button type="button" data-mobile-note-action="pin"><svg><use href="#icon-pin"></use></svg><span>Fixar</span></button>
+          <button type="button" data-mobile-note-action="highlight"><svg><use href="#icon-sun"></use></svg><span>Destacar</span></button>
           <button type="button" data-mobile-note-action="archive"><svg><use href="#icon-archive"></use></svg><span>Arquivar</span></button>
           <button type="button" data-mobile-note-action="move"><svg><use href="#icon-folder"></use></svg><span>Mover para pasta</span></button>
           <button type="button" data-mobile-note-action="edit"><svg><use href="#icon-edit"></use></svg><span>Editar</span></button>
           <button type="button" data-mobile-note-action="delete"><svg><use href="#icon-trash"></use></svg><span>Apagar</span></button>
           <button type="button" data-mobile-note-action="restore"><svg><use href="#icon-restore"></use></svg><span>Recuperar</span></button>
+        </div>
+        <div class="note-highlight-menu" id="noteHighlightMenu" hidden>
+          <p>Destacar nota</p>
+          <div class="note-highlight-colors" id="noteHighlightColors"></div>
+          <button type="button" data-note-highlight-clear>Remover destaque</button>
         </div>
         <div class="mobile-folder-move-menu" id="mobileFolderMoveMenu" hidden></div>
         <div class="site-context-menu" id="siteContextMenu" hidden>
@@ -833,6 +839,9 @@
             <h3></h3>
             <span class="note-pin" hidden>
               <svg><use href="#icon-pin"></use></svg>
+            </span>
+            <span class="note-complete" hidden>
+              <svg><use href="#icon-check"></use></svg>
             </span>
           </div>
           <p></p>

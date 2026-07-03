@@ -305,6 +305,54 @@
   color: var(--danger);
 }
 
+.note-highlight-menu {
+  position: fixed;
+  z-index: 122;
+  display: grid;
+  min-width: 228px;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 14px;
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  color: var(--text);
+  box-shadow: 0 24px 70px color-mix(in srgb, #000 24%, transparent);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+}
+
+.note-highlight-menu[hidden] {
+  display: none !important;
+}
+
+.note-highlight-menu p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 560;
+}
+
+.note-highlight-colors {
+  display: grid;
+  grid-template-columns: repeat(5, 34px);
+  gap: 9px;
+}
+
+.note-highlight-colors .color-swatch {
+  width: 34px;
+  height: 34px;
+}
+
+.note-highlight-menu [data-note-highlight-clear] {
+  min-height: 36px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--surface-hover);
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 560;
+}
+
 .text-format-toolbar {
   display: flex;
   align-items: center;
@@ -1143,6 +1191,10 @@ svg {
   background: var(--surface-active);
 }
 
+.note-card.note-highlighted {
+  box-shadow: 0 0 0 2px var(--note-highlight-color, var(--accent)) inset;
+}
+
 .note-card.dragging {
   opacity: 0.55;
 }
@@ -1207,13 +1259,15 @@ svg {
   color: var(--text-soft);
 }
 
-.note-pin {
+.note-pin,
+.note-complete {
   display: inline-grid;
   place-items: center;
   color: var(--accent);
 }
 
-.note-pin svg {
+.note-pin svg,
+.note-complete svg {
   width: 14px;
   height: 14px;
 }
@@ -7811,6 +7865,20 @@ body.custom-cursor .draw-tool-card.dragging .draw-tool-head {
     box-shadow: var(--ios-shadow);
   }
 
+  .note-card.note-highlighted {
+    border-color: var(--note-highlight-color, var(--accent));
+    box-shadow:
+      0 0 0 2px var(--note-highlight-color, var(--accent)) inset,
+      0 1px 0 color-mix(in srgb, #fff 45%, transparent) inset;
+  }
+
+  .note-card.note-highlighted.active {
+    border-color: var(--note-highlight-color, var(--accent));
+    box-shadow:
+      0 0 0 2px var(--note-highlight-color, var(--accent)) inset,
+      var(--ios-shadow);
+  }
+
   .note-card h3 {
     font-size: 19px;
     font-weight: 720;
@@ -7835,7 +7903,8 @@ body.custom-cursor .draw-tool-card.dragging .draw-tool-head {
     border-radius: 12px;
   }
 
-  .note-pin svg {
+  .note-pin svg,
+  .note-complete svg {
     width: 18px;
     height: 18px;
   }

@@ -117,14 +117,8 @@
     max-width: 44% !important;
   }
 
-  html body:not(.mobile-layout) .note-card.checklist-complete {
-    border-color: color-mix(in srgb, var(--accent) 74%, var(--line)) !important;
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 26%, transparent) inset !important;
-  }
-
-  html body:not(.mobile-layout) .note-card.checklist-complete.active {
-    border-color: var(--accent) !important;
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent) inset !important;
+  html body:not(.mobile-layout) .note-card.note-highlighted {
+    box-shadow: 0 0 0 2px var(--note-highlight-color, var(--accent)) inset !important;
   }
 }
 
