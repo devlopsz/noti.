@@ -35,6 +35,17 @@
         <path d="M7 4v6a5 5 0 0 0 10 0V4" />
         <path d="M5 21h14" />
       </symbol>
+      <symbol id="icon-text-color" viewBox="0 0 24 24">
+        <path d="M6 19h12" />
+        <path d="M8 16l4-12 4 12" />
+        <path d="M9.5 12h5" />
+      </symbol>
+      <symbol id="icon-text-highlight" viewBox="0 0 24 24">
+        <rect x="5" y="4" width="14" height="14" rx="3" />
+        <path d="M9 8h6" />
+        <path d="M12 8v7" />
+        <path d="M8 20h8" />
+      </symbol>
       <symbol id="icon-redo" viewBox="0 0 24 24">
         <path d="M15 7h5v5" />
         <path d="M20 12a7 7 0 1 1-2.1-5" />
@@ -412,23 +423,30 @@
                 <div class="format-size-menu" id="formatSizeMenu" role="menu" hidden></div>
                 <div class="text-format-menu" id="textFormatMenu" role="menu" hidden>
                   <div class="text-format-menu-actions" aria-label="Estilo do texto">
-                    <button type="button" data-format-command="bold" aria-label="Negrito">
+                    <button type="button" data-format-command="bold" aria-label="Negrito" title="Negrito">
                       <svg><use href="#icon-bold"></use></svg>
-                      <span>Negrito</span>
                     </button>
-                    <button type="button" data-format-command="italic" aria-label="Itálico">
+                    <button type="button" data-format-command="italic" aria-label="Itálico" title="Itálico">
                       <svg><use href="#icon-italic"></use></svg>
-                      <span>Itálico</span>
                     </button>
-                    <button type="button" data-format-command="underline" aria-label="Sublinhado">
+                    <button type="button" data-format-command="underline" aria-label="Sublinhado" title="Sublinhado">
                       <svg><use href="#icon-underline"></use></svg>
-                      <span>Sublinhado</span>
+                    </button>
+                    <button type="button" data-format-color-trigger="foreColor" aria-label="Cor do texto" title="Cor do texto">
+                      <svg><use href="#icon-text-color"></use></svg>
+                    </button>
+                    <button type="button" data-format-color-trigger="backgroundColor" aria-label="Fundo do texto" title="Fundo do texto">
+                      <svg><use href="#icon-text-highlight"></use></svg>
                     </button>
                   </div>
                   <div class="text-format-menu-section">
                     <p>Tamanho</p>
                     <div class="text-format-size-options" id="textFormatSizeOptions" aria-label="Tamanho do texto"></div>
                   </div>
+                </div>
+                <div class="text-format-color-menu" id="textFormatColorMenu" role="menu" hidden>
+                  <p id="textFormatColorTitle">Cor do texto</p>
+                  <div class="text-format-color-wheel" id="textFormatColorOptions" aria-label="Cores"></div>
                 </div>
                 <button class="primary-action compact finalize-note-button" id="finalizeNoteButton" type="button">
                   <svg><use href="#icon-check"></use></svg>

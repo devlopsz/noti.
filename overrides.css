@@ -23,14 +23,20 @@
   }
 
   html body:not(.mobile-layout) .note-card {
-    min-height: 92px !important;
+    min-height: 90px !important;
     border: 1px solid transparent !important;
     border-radius: 18px !important;
-    padding: 13px 13px 13px 14px !important;
+    padding: 12px 13px 12px 14px !important;
     gap: 10px !important;
     align-items: center !important;
     overflow: hidden !important;
     box-sizing: border-box !important;
+  }
+
+  html body:not(.mobile-layout) .note-card.note-card-roomy {
+    min-height: 112px !important;
+    padding-top: 17px !important;
+    padding-bottom: 17px !important;
   }
 
   html body:not(.mobile-layout) .note-copy {
@@ -47,6 +53,11 @@
     min-height: 0 !important;
     margin: 4px 0 8px !important;
     line-height: 1.32 !important;
+  }
+
+  html body:not(.mobile-layout) .note-card.note-card-roomy p {
+    margin-top: 5px !important;
+    margin-bottom: 10px !important;
   }
 
   html body:not(.mobile-layout) .goal-note-card {

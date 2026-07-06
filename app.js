@@ -23,6 +23,7 @@ const TOOLBAR_LABELS = {
 };
 const ACCENT_COLORS = ["#b98500", "#007aff", "#34c759", "#ff3b30", "#af52de", "#ff9500", "#64d2ff", "#ff2d55", "#5856d6", "#8e8e93"];
 const FOLDER_COLORS = ACCENT_COLORS.slice();
+const TEXT_FORMAT_COLORS = ["#ff2d55", "#ff3b30", "#ff9500", "#b98500", "#34c759", "#64d2ff", "#007aff", "#5856d6", "#af52de", "#8e8e93", "#000000", "#ffffff"];
 const TEXT_SIZE_OPTIONS = [14, 16, 18, 22, 28, 34];
 const DEFAULT_DRAWING_TOOL = { mode: "pen", color: "#b98500", width: 6, context: "page", blockId: "" };
 const AUTOCORRECT_WORDS = new Map(Object.entries({
@@ -201,6 +202,7 @@ let mobileNoteMenuTargetId = "";
 let mobileNotePressTimer = 0;
 let mobileNotePointer = null;
 let noteHighlightTargetId = "";
+let noteCardDensityRaf = 0;
 let isApplyingAutocorrect = false;
 
 const $ = (selector) => document.querySelector(selector);
@@ -272,6 +274,9 @@ const elements = {
   formatSizeMenu: $("#formatSizeMenu"),
   textFormatMenu: $("#textFormatMenu"),
   textFormatSizeOptions: $("#textFormatSizeOptions"),
+  textFormatColorMenu: $("#textFormatColorMenu"),
+  textFormatColorTitle: $("#textFormatColorTitle"),
+  textFormatColorOptions: $("#textFormatColorOptions"),
   formatColorOptions: $("#formatColorOptions"),
   finalizeNoteButton: $("#finalizeNoteButton"),
   pinButton: $("#pinButton"),
@@ -518,6 +523,8 @@ function bindEvents() {
   elements.formatSizeMenu?.addEventListener("click", handleFormatSizeMenuClick);
   elements.textFormatMenu?.addEventListener("mousedown", preserveRichTextMenuSelection);
   elements.textFormatMenu?.addEventListener("click", handleTextFormatMenuClick);
+  elements.textFormatColorMenu?.addEventListener("mousedown", preserveRichTextMenuSelection);
+  elements.textFormatColorMenu?.addEventListener("click", handleTextFormatColorMenuClick);
   elements.siteContextMenu?.addEventListener("click", handleSiteContextMenuClick);
   document.addEventListener("selectionchange", handleRichSelectionChange);
   document.addEventListener("input", handleAutocorrectInput, true);
@@ -535,7 +542,7 @@ function bindEvents() {
     if (!event.target.closest("#noteHighlightMenu")) closeNoteHighlightMenu();
     if (!event.target.closest("#siteContextMenu")) closeSiteContextMenu();
     if (!event.target.closest("#formatSizeMenu, #formatSizeButton")) closeFormatSizeMenu();
-    if (!event.target.closest("#textFormatMenu")) closeTextFormatMenu();
+    if (!event.target.closest("#textFormatMenu, #textFormatColorMenu")) closeTextFormatMenu();
 
     if (!event.target.closest("#toolbarContextMenu")) closeToolbarContextMenu();
     if (!event.target.closest("#themeDropdown")) closeThemeMenu();
@@ -695,6 +702,7 @@ function setupMobileLayout() {
     if (isMobileLayout() && mobileScreen === "desktop") mobileScreen = "folders";
     if (!isMobileLayout()) mobileScreen = "desktop";
     updateMobileLayoutState();
+    scheduleNoteCardDensityUpdate();
   });
 }
 
@@ -1149,6 +1157,27 @@ function renderNotes() {
 
     elements.notesList.append(card);
   });
+  scheduleNoteCardDensityUpdate();
+}
+
+function scheduleNoteCardDensityUpdate() {
+  if (noteCardDensityRaf) cancelAnimationFrame(noteCardDensityRaf);
+  noteCardDensityRaf = requestAnimationFrame(updateNoteCardDensity);
+}
+
+function updateNoteCardDensity() {
+  noteCardDensityRaf = 0;
+  if (!elements.notesList) return;
+  elements.notesList.querySelectorAll(".note-card").forEach((card) => {
+    card.classList.remove("note-card-roomy");
+    if (isMobileLayout() || card.classList.contains("goal-note-card")) return;
+    const preview = card.querySelector("p");
+    if (!preview) return;
+    const styles = getComputedStyle(preview);
+    const lineHeight = parseFloat(styles.lineHeight) || parseFloat(styles.fontSize) * 1.32 || 17;
+    const renderedLines = preview.getBoundingClientRect().height / lineHeight;
+    card.classList.toggle("note-card-roomy", renderedLines > 1.45);
+  });
 }
 
 function bindMobileNoteGestures(card, note) {
@@ -1390,7 +1419,7 @@ function handleAppContextMenu(event) {
   }
 
   if (isMobileLayout()) return;
-  if (isNativeEditableTarget(targetElement) || targetElement?.closest?.("#toolbarContextMenu, #mobileNoteActionMenu, #mobileFolderMoveMenu, #noteHighlightMenu, #siteContextMenu, #formatSizeMenu, #textFormatMenu, .app-modal, .profile-edit-dialog, .folder-edit-dialog, .draw-tool-popover")) return;
+  if (isNativeEditableTarget(targetElement) || targetElement?.closest?.("#toolbarContextMenu, #mobileNoteActionMenu, #mobileFolderMoveMenu, #noteHighlightMenu, #siteContextMenu, #formatSizeMenu, #textFormatMenu, #textFormatColorMenu, .app-modal, .profile-edit-dialog, .folder-edit-dialog, .draw-tool-popover")) return;
 
   const noteCard = targetElement?.closest?.(".note-card");
   if (noteCard?.dataset.noteId) {
@@ -4270,14 +4299,33 @@ function applyInlineStyleToSelection(editor, styles = {}) {
 
   const fragment = range.extractContents();
   stripConflictingInlineStyles(fragment, styles);
-  const span = document.createElement("span");
-  if (styles.fontSize) span.style.fontSize = styles.fontSize;
-  if (styles.color) span.style.color = styles.color;
-  span.append(fragment);
-  range.insertNode(span);
+  const hasFontSize = hasOwnStyle(styles, "fontSize") && styles.fontSize;
+  const hasColor = hasOwnStyle(styles, "color") && styles.color;
+  const hasBackgroundColor = hasOwnStyle(styles, "backgroundColor") && styles.backgroundColor;
+  const shouldWrap = hasFontSize || hasColor || hasBackgroundColor;
+  let selectedNodes = [];
 
+  if (shouldWrap) {
+    const span = document.createElement("span");
+    if (hasFontSize) span.style.fontSize = styles.fontSize;
+    if (hasColor) span.style.color = styles.color;
+    if (hasBackgroundColor) span.style.backgroundColor = styles.backgroundColor;
+    span.append(fragment);
+    range.insertNode(span);
+    selectedNodes = [span];
+  } else {
+    selectedNodes = Array.from(fragment.childNodes);
+    range.insertNode(fragment);
+  }
+
+  if (!selectedNodes.length) return false;
   const nextRange = document.createRange();
-  nextRange.selectNodeContents(span);
+  if (selectedNodes.length === 1 && selectedNodes[0].nodeType === Node.ELEMENT_NODE) {
+    nextRange.selectNodeContents(selectedNodes[0]);
+  } else {
+    nextRange.setStartBefore(selectedNodes[0]);
+    nextRange.setEndAfter(selectedNodes[selectedNodes.length - 1]);
+  }
   selection.removeAllRanges();
   selection.addRange(nextRange);
   activeRichRange = nextRange.cloneRange();
@@ -4288,10 +4336,15 @@ function applyInlineStyleToSelection(editor, styles = {}) {
 function stripConflictingInlineStyles(root, styles = {}) {
   const spans = root.querySelectorAll ? Array.from(root.querySelectorAll("span")) : [];
   spans.forEach((span) => {
-    if (styles.fontSize) span.style.fontSize = "";
-    if (styles.color) span.style.color = "";
+    if (hasOwnStyle(styles, "fontSize")) span.style.fontSize = "";
+    if (hasOwnStyle(styles, "color")) span.style.color = "";
+    if (hasOwnStyle(styles, "backgroundColor")) span.style.backgroundColor = "";
     if (!span.getAttribute("style")) unwrapElement(span);
   });
+}
+
+function hasOwnStyle(styles, property) {
+  return Object.prototype.hasOwnProperty.call(styles, property);
 }
 
 function unwrapElement(element) {
@@ -4326,7 +4379,7 @@ function handleTextFormatClick(event) {
 }
 
 function preserveRichTextMenuSelection(event) {
-  if (event.target.closest("button")) event.preventDefault();
+  if (event.target.closest("button, [data-color]")) event.preventDefault();
 }
 
 function toggleFormatSizeMenu() {
@@ -4370,6 +4423,12 @@ function handleFormatSizeMenuClick(event) {
 }
 
 function handleTextFormatMenuClick(event) {
+  const colorTrigger = event.target.closest("[data-format-color-trigger]");
+  if (colorTrigger) {
+    showTextFormatColorMenu(colorTrigger.dataset.formatColorTrigger, colorTrigger);
+    return;
+  }
+
   const commandButton = event.target.closest("[data-format-command]");
   if (commandButton) {
     applyTextFormat(commandButton.dataset.formatCommand);
@@ -4384,6 +4443,41 @@ function handleTextFormatMenuClick(event) {
   }
 }
 
+function handleTextFormatColorMenuClick(event) {
+  const colorButton = event.target.closest("[data-color]");
+  if (!colorButton) return;
+  const command = elements.textFormatColorMenu?.dataset.formatColorCommand || "foreColor";
+  applyTextFormat(command, colorButton.dataset.color || "");
+  closeTextFormatMenu();
+}
+
+function showTextFormatColorMenu(command, sourceButton) {
+  if (!elements.textFormatColorMenu || !elements.textFormatColorOptions) return;
+  const editor = getActiveRichEditor();
+  rememberRichTextEditor(editor);
+  restoreRichSelection(editor);
+  const safeCommand = command === "backgroundColor" ? "backgroundColor" : "foreColor";
+  const selectedColor = getSelectedTextFormatColor(editor, safeCommand);
+  elements.textFormatColorMenu.dataset.formatColorCommand = safeCommand;
+  elements.textFormatColorMenu.dataset.formatColorCurrent = selectedColor;
+  if (elements.textFormatColorTitle) {
+    elements.textFormatColorTitle.textContent = safeCommand === "backgroundColor" ? "Fundo do texto" : "Cor do texto";
+  }
+  renderTextFormatColorWheel(elements.textFormatColorOptions, TEXT_FORMAT_COLORS, selectedColor);
+  elements.textFormatColorMenu.hidden = false;
+  elements.textFormatColorMenu.style.left = "0px";
+  elements.textFormatColorMenu.style.top = "0px";
+
+  const sourceBounds = sourceButton?.getBoundingClientRect?.();
+  const menuBounds = elements.textFormatColorMenu.getBoundingClientRect();
+  const anchorX = sourceBounds ? sourceBounds.left + sourceBounds.width / 2 - menuBounds.width / 2 : window.innerWidth / 2 - menuBounds.width / 2;
+  const anchorY = sourceBounds ? sourceBounds.top + sourceBounds.height / 2 - menuBounds.height / 2 : window.innerHeight / 2 - menuBounds.height / 2;
+  const left = Math.max(10, Math.min(window.innerWidth - menuBounds.width - 10, anchorX));
+  const top = Math.max(10, Math.min(window.innerHeight - menuBounds.height - 10, anchorY));
+  elements.textFormatColorMenu.style.left = `${left}px`;
+  elements.textFormatColorMenu.style.top = `${top}px`;
+}
+
 function showTextFormatMenu(x, y, editor = getActiveRichEditor()) {
   if (!elements.textFormatMenu || !editor) return;
   const note = getSelectedNote();
@@ -4391,6 +4485,7 @@ function showTextFormatMenu(x, y, editor = getActiveRichEditor()) {
 
   rememberRichTextEditor(editor);
   closeFormatSizeMenu();
+  closeTextFormatColorMenu();
   closeMobileNoteActionMenu();
   closeMobileFolderMoveMenu();
   closeSiteContextMenu();
@@ -4413,6 +4508,14 @@ function showTextFormatMenu(x, y, editor = getActiveRichEditor()) {
 
 function closeTextFormatMenu() {
   if (elements.textFormatMenu) elements.textFormatMenu.hidden = true;
+  closeTextFormatColorMenu();
+}
+
+function closeTextFormatColorMenu() {
+  if (!elements.textFormatColorMenu) return;
+  elements.textFormatColorMenu.hidden = true;
+  elements.textFormatColorMenu.dataset.formatColorCommand = "";
+  elements.textFormatColorMenu.dataset.formatColorCurrent = "";
 }
 
 function renderTextSizeOptions(container) {
@@ -4429,6 +4532,141 @@ function renderTextSizeOptions(container) {
       return button;
     })
   );
+}
+
+function renderTextFormatColorWheel(container, colors, activeColor) {
+  if (!container) return;
+  const source = Array.isArray(colors) && colors.length ? colors : TEXT_FORMAT_COLORS;
+  const step = 360 / source.length;
+  const active = normalizeOptionalAccent(activeColor).toLowerCase();
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 220 220");
+
+  source.forEach((color, index) => {
+    const normalizedColor = normalizeAccent(color);
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    const startAngle = index * step - 90;
+    const endAngle = startAngle + step;
+    path.classList.add("color-wheel-segment");
+    path.dataset.color = normalizedColor;
+    path.setAttribute("d", describeDonutSegment(110, 110, 96, 42, startAngle, endAngle));
+    path.setAttribute("fill", normalizedColor);
+    path.classList.toggle("active", normalizedColor.toLowerCase() === active);
+    path.setAttribute("aria-label", `Escolher cor ${getColorName(normalizedColor)}`);
+    path.setAttribute("role", "button");
+    path.setAttribute("tabindex", "0");
+    svg.append(path);
+  });
+
+  const clearGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  clearGroup.classList.add("color-wheel-clear");
+  clearGroup.classList.toggle("active", !active);
+  clearGroup.dataset.color = "";
+  clearGroup.setAttribute("role", "button");
+  clearGroup.setAttribute("tabindex", "0");
+  clearGroup.setAttribute("aria-label", "Sem cor");
+
+  const clearCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  clearCircle.setAttribute("cx", "110");
+  clearCircle.setAttribute("cy", "110");
+  clearCircle.setAttribute("r", "34");
+
+  const lineA = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  lineA.setAttribute("x1", "98");
+  lineA.setAttribute("y1", "98");
+  lineA.setAttribute("x2", "122");
+  lineA.setAttribute("y2", "122");
+
+  const lineB = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  lineB.setAttribute("x1", "122");
+  lineB.setAttribute("y1", "98");
+  lineB.setAttribute("x2", "98");
+  lineB.setAttribute("y2", "122");
+
+  clearGroup.append(clearCircle, lineA, lineB);
+  svg.append(clearGroup);
+  container.replaceChildren(svg);
+}
+
+function polarToCartesian(centerX, centerY, radius, angleDegrees) {
+  const angleRadians = (angleDegrees * Math.PI) / 180;
+  return {
+    x: centerX + radius * Math.cos(angleRadians),
+    y: centerY + radius * Math.sin(angleRadians),
+  };
+}
+
+function describeDonutSegment(centerX, centerY, outerRadius, innerRadius, startAngle, endAngle) {
+  const outerStart = polarToCartesian(centerX, centerY, outerRadius, startAngle);
+  const outerEnd = polarToCartesian(centerX, centerY, outerRadius, endAngle);
+  const innerEnd = polarToCartesian(centerX, centerY, innerRadius, endAngle);
+  const innerStart = polarToCartesian(centerX, centerY, innerRadius, startAngle);
+  const largeArc = endAngle - startAngle > 180 ? 1 : 0;
+  return [
+    `M ${outerStart.x.toFixed(3)} ${outerStart.y.toFixed(3)}`,
+    `A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${outerEnd.x.toFixed(3)} ${outerEnd.y.toFixed(3)}`,
+    `L ${innerEnd.x.toFixed(3)} ${innerEnd.y.toFixed(3)}`,
+    `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${innerStart.x.toFixed(3)} ${innerStart.y.toFixed(3)}`,
+    "Z",
+  ].join(" ");
+}
+
+function getSelectedTextFormatColor(editor, command) {
+  if (!editor) return "";
+  const range = getCurrentRichSelectionRange(editor) || (activeRichRange && isRangeInsideEditor(editor, activeRichRange) ? activeRichRange : null);
+  if (!range) return "";
+  const node = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement;
+  let element = node;
+
+  if (command === "backgroundColor") {
+    while (element && element !== editor) {
+      const color = normalizeComparableColor(element.style?.backgroundColor || "");
+      if (color) return color;
+      element = element.parentElement;
+    }
+    return "";
+  }
+
+  while (element && element !== editor) {
+    const color = normalizeComparableColor(element.style?.color || "");
+    if (color) return color;
+    element = element.parentElement;
+  }
+  return normalizeComparableColor(getComputedStyle(node).color);
+}
+
+function normalizeComparableColor(value = "") {
+  const color = String(value || "").trim().toLowerCase();
+  if (!color || color === "transparent") return "";
+  const hexMatch = color.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (hexMatch) {
+    const hex = hexMatch[1];
+    return "#" + (hex.length === 3 ? hex.split("").map((item) => item + item).join("") : hex).toLowerCase();
+  }
+  const rgbMatch = color.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*(0|1|0?\.\d+))?\s*\)$/i);
+  if (!rgbMatch) return "";
+  const alpha = rgbMatch[4] === undefined ? 1 : Number(rgbMatch[4]);
+  if (!Number.isFinite(alpha) || alpha <= 0) return "";
+  const toHex = (number) => Math.max(0, Math.min(255, Number(number) || 0)).toString(16).padStart(2, "0");
+  return `#${toHex(rgbMatch[1])}${toHex(rgbMatch[2])}${toHex(rgbMatch[3])}`;
+}
+
+function getColorName(color) {
+  const names = {
+    "#000000": "preto",
+    "#ffffff": "branco",
+    "#ff2d55": "rosa",
+    "#ff3b30": "vermelho",
+    "#ff9500": "laranja",
+    "#b98500": "dourado",
+    "#34c759": "verde",
+    "#64d2ff": "azul claro",
+    "#007aff": "azul",
+    "#5856d6": "índigo",
+    "#af52de": "roxo",
+    "#8e8e93": "cinza",
+  };
+  return names[String(color).toLowerCase()] || color;
 }
 
 function setFormatSizeValue(value) {
@@ -4453,8 +4691,15 @@ function applyTextFormat(command, value = "", options = {}) {
     }
     setFormatSizeValue(size);
   } else if (command === "foreColor") {
-    if (!applyInlineStyleToSelection(editor, { color: normalizeAccent(value) }) && !options.silent) {
+    const color = normalizeOptionalAccent(value);
+    if (!applyInlineStyleToSelection(editor, { color }) && !options.silent) {
       showToast("Selecione o texto para alterar a cor");
+      return;
+    }
+  } else if (command === "backgroundColor") {
+    const backgroundColor = normalizeOptionalAccent(value);
+    if (!applyInlineStyleToSelection(editor, { backgroundColor }) && !options.silent) {
+      showToast("Selecione o texto para alterar o fundo");
       return;
     }
   } else {
@@ -4501,7 +4746,7 @@ function placeTextFormatToolbar() {
 }
 
 function placeRichTextMenus() {
-  [elements.formatSizeMenu, elements.textFormatMenu].forEach((menu) => {
+  [elements.formatSizeMenu, elements.textFormatMenu, elements.textFormatColorMenu].forEach((menu) => {
     if (menu && menu.parentElement !== document.body) document.body.append(menu);
   });
 }
@@ -4598,10 +4843,12 @@ function sanitizeRichHtml(html = "", options = {}) {
     }
 
     const color = normalizeCssColor(element.style.color);
+    const backgroundColor = normalizeCssColor(element.style.backgroundColor);
     const fontSize = normalizeCssFontSize(element.style.fontSize);
     Array.from(element.attributes).forEach((attribute) => element.removeAttribute(attribute.name));
     if (element.tagName === "SPAN") {
       if (color) element.style.color = color;
+      if (backgroundColor) element.style.backgroundColor = backgroundColor;
       if (fontSize) element.style.fontSize = fontSize;
     }
   });
