@@ -7,13 +7,16 @@ const FIRST_VISIT_KEY = "noti-first-visit-seen-v1";
 const BACKUP_TYPE = "noti-backup";
 const BACKUP_VERSION = 1;
 const MAX_ATTACHMENT_BYTES = 2.5 * 1024 * 1024;
-const DEFAULT_TOOLBAR_ITEMS = ["theme", "separator-main", "attach", "draw", "drawingBlock", "pin", "archive", "delete", "restore", "search", "settings", "account"];
+const PAGES_UPDATE_ASSETS = ["index.html", "app.js", "styles.css"];
+const PAGES_UPDATE_CHECK_INTERVAL = 120000;
+const DEFAULT_TOOLBAR_ITEMS = ["theme", "separator-main", "attach", "draw", "drawingBlock", "checklistBlock", "pin", "archive", "delete", "restore", "search", "settings", "account"];
 const TOOLBAR_LABELS = {
   settings: "Configurações",
   theme: "Tema",
   attach: "Anexo",
   draw: "Caneta",
   drawingBlock: "Bloco de desenho",
+  checklistBlock: "Checklist na nota",
   pin: "Fixar",
   archive: "Arquivar",
   delete: "Lixeira",
@@ -170,6 +173,13 @@ let currentView = "all";
 let selectedNoteId = state.notes.find((note) => !note.trashed && !note.archived)?.id ?? null;
 let draggedNoteId = null;
 let toastTimer = null;
+let tooltipObserver = null;
+let tooltipTarget = null;
+let tooltipHideTimer = 0;
+let tooltipEventsBound = false;
+let knownPagesSignature = "";
+let latestPagesSignature = "";
+let pagesUpdateTimer = 0;
 let activeTextBlockId = null;
 let activeTextSelection = { start: 0, end: 0 };
 let activeRichEditor = null;
@@ -183,6 +193,7 @@ let editingFolderId = null;
 let selectedFolderColor = "#007aff";
 let draggedToolbarKey = "";
 let toolbarContextTargetKey = "";
+let blockContextTarget = null;
 let drawingTool = { ...DEFAULT_DRAWING_TOOL, color: preferences?.accent || DEFAULT_DRAWING_TOOL.color };
 let activeDrawingPointer = null;
 let activeDrawingStroke = null;
@@ -195,6 +206,7 @@ const drawingRedoStacks = new Map();
 let draggedNoteBlockIds = [];
 let draggedChecklistItemId = "";
 let draggedShoppingItemId = "";
+let draggedInlineChecklistItem = null;
 let draggedDrawingBlockId = "";
 let mobileScreen = "folders";
 let mobileSettingsReturnScreen = "folders";
@@ -246,6 +258,7 @@ const elements = {
   createMenuButton: $("#createMenuButton"),
   createTypeLayer: $("#createTypeLayer"),
   sidebarCollapseButton: $("#sidebarCollapseButton"),
+  updatePageButton: $("#updatePageButton"),
   addFolderButton: $("#addFolderButton"),
   folderList: $("#folderList"),
   searchInput: $("#searchInput"),
@@ -286,6 +299,7 @@ const elements = {
   attachButton: $("#attachButton"),
   drawButton: $("#drawButton"),
   drawingBlockButton: $("#drawingBlockButton"),
+  checklistBlockButton: $("#checklistBlockButton"),
   drawToolPopover: $("#drawToolPopover"),
   drawToolCard: $("#drawToolCard"),
   drawToolHead: $("#drawToolHead"),
@@ -432,6 +446,8 @@ function init() {
   bindEvents();
   renderAccountButton();
   render();
+  setupAutoTooltips();
+  setupPagesUpdateChecker();
   localStorage.setItem(FIRST_VISIT_KEY, "true");
 }
 
@@ -541,6 +557,7 @@ function bindEvents() {
     if (!event.target.closest("#mobileFolderMoveMenu")) closeMobileFolderMoveMenu();
     if (!event.target.closest("#noteHighlightMenu")) closeNoteHighlightMenu();
     if (!event.target.closest("#siteContextMenu")) closeSiteContextMenu();
+    if (!event.target.closest("#blockContextMenu")) closeBlockContextMenu();
     if (!event.target.closest("#formatSizeMenu, #formatSizeButton")) closeFormatSizeMenu();
     if (!event.target.closest("#textFormatMenu, #textFormatColorMenu")) closeTextFormatMenu();
 
@@ -555,6 +572,7 @@ function bindEvents() {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       closeToolbarContextMenu();
+      closeBlockContextMenu();
       closeSiteContextMenu();
       closeFormatSizeMenu();
       closeTextFormatMenu();
@@ -568,6 +586,7 @@ function bindEvents() {
   elements.createMenuButton.addEventListener("click", handleCreateMenuButtonClick);
   elements.createTypeLayer.addEventListener("click", handleCreateTypeLayerClick);
   elements.sidebarCollapseButton.addEventListener("click", toggleSidebarCollapsed);
+  elements.updatePageButton?.addEventListener("click", reloadForPagesUpdate);
   elements.addFolderButton.addEventListener("click", createFolder);
 
   $$(".nav-item").forEach((button) => {
@@ -624,6 +643,7 @@ function bindEvents() {
   elements.restoreButton.addEventListener("click", restoreSelectedNote);
   elements.drawButton.addEventListener("click", openPageDrawingTool);
   elements.drawingBlockButton.addEventListener("click", createDrawingBlock);
+  elements.checklistBlockButton?.addEventListener("click", createInlineChecklistBlock);
   elements.closeDrawToolButton.addEventListener("click", closeDrawingTool);
   elements.minimizeDrawToolButton.addEventListener("click", toggleDrawToolMinimized);
   elements.drawToolHead.addEventListener("pointerdown", startDrawToolDrag);
@@ -1063,7 +1083,8 @@ function renderSidebar() {
         moveDraggedNoteToFolder(folder.id);
       });
 
-      button.title = "Clique para abrir. Clique direito para renomear.";
+      button.dataset.tooltip = folder.name;
+      button.title = folder.name;
       elements.folderList.append(button);
     });
 }
@@ -1099,7 +1120,10 @@ function renderNotes() {
 
     const card = elements.noteCardTemplate.content.firstElementChild.cloneNode(true);
     const folder = getFolder(note.folderId);
+    const noteTitle = note.title.trim() || "Sem título";
     card.dataset.noteId = note.id;
+    card.dataset.tooltip = noteTitle;
+    card.title = noteTitle;
     card.classList.toggle("active", note.id === selectedNoteId);
     const complete = isChecklistComplete(note);
     const highlightColor = normalizeOptionalAccent(note.highlightColor);
@@ -1108,7 +1132,7 @@ function renderNotes() {
     card.querySelector(".note-kind").textContent = getNoteKindLabel(note);
     card.querySelector(".note-pin").hidden = !note.pinned;
     card.querySelector(".note-complete").hidden = !complete;
-    card.querySelector("h3").textContent = note.title.trim() || "Sem título";
+    card.querySelector("h3").textContent = noteTitle;
     card.querySelector("p").textContent = getNotePreview(note);
     if (note.type === "goal") renderGoalNoteCard(card, note);
     card.querySelector(".note-folder").textContent = folder?.name || "Sem pasta";
@@ -1577,6 +1601,11 @@ function renderEditor() {
   const drawingDisabled = !canUseDrawingTools(note);
   elements.drawButton.disabled = drawingDisabled;
   elements.drawingBlockButton.disabled = drawingDisabled;
+  if (elements.checklistBlockButton) {
+    const checklistBlockDisabled = !canEditNoteContent(note) || note.type !== "note";
+    elements.checklistBlockButton.disabled = checklistBlockDisabled;
+    elements.checklistBlockButton.classList.toggle("disabled", checklistBlockDisabled);
+  }
   elements.drawButton.classList.toggle("active", !elements.drawToolPopover.hidden && drawingTool.context === "page");
   elements.drawingBlockButton.classList.toggle("active", !elements.drawToolPopover.hidden && drawingTool.context === "block");
   elements.folderSelect.disabled = contentLocked;
@@ -1705,6 +1734,12 @@ function renderNoteBlocks(note) {
       continue;
     }
 
+    if (block.type === "checklist") {
+      renderNoteChecklistBlock(note, block);
+      index += 1;
+      continue;
+    }
+
     renderNoteTextBlock(note, block);
     index += 1;
   }
@@ -1781,6 +1816,144 @@ function renderNoteImageGrid(note, imageBlocks) {
 
   elements.noteBlockEditor.append(wrapper);
 }
+
+function renderNoteChecklistBlock(note, block) {
+  const canEdit = canEditNoteContent(note);
+  block.items = normalizeInlineChecklistItems(block.items);
+  const wrapper = document.createElement("section");
+  wrapper.className = "note-content-block note-checklist-wrapper";
+  wrapper.dataset.blockIds = block.id;
+
+  const handle = document.createElement("button");
+  handle.className = "block-drag-handle checklist-block-drag-handle";
+  handle.type = "button";
+  handle.draggable = canEdit;
+  handle.hidden = !canEdit;
+  handle.setAttribute("aria-label", "Mover checklist");
+  handle.title = "Mover checklist";
+  handle.innerHTML = `<svg><use href="#icon-grip"></use></svg>`;
+
+  const card = document.createElement("div");
+  card.className = "inline-checklist-card";
+
+  const total = block.items.length;
+  const done = block.items.filter((item) => item.done).length;
+  const progress = total ? Math.round((done / total) * 100) : 0;
+  const progressBar = document.createElement("div");
+  progressBar.className = "inline-checklist-progress";
+  progressBar.style.setProperty("--progress", `${progress}%`);
+  progressBar.setAttribute("role", "progressbar");
+  progressBar.setAttribute("aria-label", `${progress}% concluído`);
+  progressBar.setAttribute("aria-valuemin", "0");
+  progressBar.setAttribute("aria-valuemax", "100");
+  progressBar.setAttribute("aria-valuenow", String(progress));
+  progressBar.title = `${progress}% concluído`;
+  progressBar.innerHTML = `<span>${progress}%</span>`;
+
+  const itemsWrap = document.createElement("div");
+  itemsWrap.className = "inline-checklist-items";
+  block.items.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "inline-checklist-row";
+    row.classList.toggle("editable", canEdit);
+    row.classList.toggle("done", item.done);
+    row.dataset.itemId = item.id;
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = item.done;
+    checkbox.disabled = note.trashed;
+    checkbox.setAttribute("aria-label", "Marcar item");
+    checkbox.title = "Marcar item";
+    checkbox.addEventListener("change", () => {
+      updateInlineChecklistItem(block.id, item.id, { done: checkbox.checked }, { renderEditor: false });
+      row.classList.toggle("done", checkbox.checked);
+      item.done = checkbox.checked;
+      updateInlineChecklistProgress(card, block);
+    });
+
+    if (canEdit) {
+      const itemHandle = document.createElement("button");
+      itemHandle.className = "inline-item-drag-handle";
+      itemHandle.type = "button";
+      itemHandle.draggable = true;
+      itemHandle.setAttribute("aria-label", "Mover tópico");
+      itemHandle.title = "Mover tópico";
+      itemHandle.innerHTML = `<svg><use href="#icon-grip"></use></svg>`;
+
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = item.text || "";
+      input.placeholder = "Item do checklist";
+      input.setAttribute("aria-label", "Texto do item");
+      input.title = "Texto do item";
+      input.addEventListener("input", () => {
+        updateInlineChecklistItem(block.id, item.id, { text: input.value }, { renderEditor: false });
+      });
+
+      const removeItemButton = document.createElement("button");
+      removeItemButton.className = "icon-button danger small";
+      removeItemButton.type = "button";
+      removeItemButton.setAttribute("aria-label", "Remover item");
+      removeItemButton.title = "Remover item";
+      removeItemButton.innerHTML = `<svg><use href="#icon-x"></use></svg>`;
+      removeItemButton.addEventListener("click", () => removeInlineChecklistItem(block.id, item.id));
+
+      row.append(itemHandle, checkbox, input, removeItemButton);
+      attachInlineChecklistItemDragHandlers(row, itemHandle, block.id, item.id);
+    } else {
+      const text = document.createElement("span");
+      text.className = "inline-checklist-text";
+      text.textContent = item.text || "Item sem texto";
+      row.append(checkbox, text);
+    }
+
+    itemsWrap.append(row);
+  });
+
+  card.append(progressBar, itemsWrap);
+
+  if (canEdit) {
+    const form = document.createElement("form");
+    form.className = "inline-checklist-form";
+    form.innerHTML = `
+      <input type="text" placeholder="Novo item" aria-label="Novo item" title="Novo item" />
+      <button type="submit" class="primary-action compact" aria-label="Adicionar item" title="Adicionar item">
+        <svg><use href="#icon-plus"></use></svg>
+        Adicionar
+      </button>
+    `;
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const input = form.querySelector("input");
+      const text = input.value.trim();
+      if (!text) return;
+      addInlineChecklistItem(block.id, text);
+      input.value = "";
+    });
+    card.append(form);
+  }
+
+  wrapper.append(handle, card);
+  attachNoteBlockDropHandlers(wrapper, [block.id]);
+  attachNoteBlockDragHandle(handle, [block.id]);
+  elements.noteBlockEditor.append(wrapper);
+}
+
+function updateInlineChecklistProgress(card, block) {
+  const progressBar = card?.querySelector(".inline-checklist-progress");
+  if (!progressBar) return;
+  const items = normalizeInlineChecklistItems(block.items);
+  const done = items.filter((item) => item.done).length;
+  const progress = items.length ? Math.round((done / items.length) * 100) : 0;
+  progressBar.style.setProperty("--progress", `${progress}%`);
+  progressBar.setAttribute("aria-label", `${progress}% concluído`);
+  progressBar.setAttribute("aria-valuenow", String(progress));
+  progressBar.title = `${progress}% concluído`;
+  const label = progressBar.querySelector("span");
+  if (label) label.textContent = `${progress}%`;
+}
+
 function renderChecklist(note) {
   elements.checklistItems.replaceChildren();
 
@@ -1976,6 +2149,37 @@ function openPageDrawingTool(event) {
   scheduleEditorCanvasRender();
 }
 
+function createInlineChecklistBlock(event) {
+  const note = getSelectedNote();
+  if (!note || note.type !== "note") {
+    showToast("Abra uma nota para inserir checklist");
+    return;
+  }
+  if (!canEditNoteContent(note)) {
+    showToast("Ative a edição para criar um checklist");
+    return;
+  }
+
+  const checklistBlock = createInlineChecklistBlockData();
+  const afterTextBlock = { id: cryptoId(), type: "text", text: "", html: "" };
+
+  updateSelectedNote((currentNote) => {
+    ensureNoteTextBlock(currentNote);
+    let insertIndex = currentNote.blocks.findIndex((block) => block.id === activeTextBlockId && block.type === "text");
+    if (insertIndex < 0) insertIndex = currentNote.blocks.length - 1;
+    currentNote.blocks.splice(insertIndex + 1, 0, checklistBlock, afterTextBlock);
+    activeTextBlockId = afterTextBlock.id;
+    activeTextSelection = null;
+    currentNote.content = getTextFromBlocks(currentNote);
+  });
+
+  showToast("Checklist adicionado à nota");
+  requestAnimationFrame(() => {
+    const inserted = elements.noteBlockEditor?.querySelector(`[data-block-ids="${CSS.escape(checklistBlock.id)}"] input[type="text"]`);
+    inserted?.focus();
+  });
+}
+
 function createDrawingBlock(event) {
   const note = getSelectedNote();
   if (!canUseDrawingTools(note)) {
@@ -2014,6 +2218,7 @@ function closeDrawingTool() {
   activeDrawingBlockId = "";
   elements.drawButton?.classList.remove("active");
   elements.drawingBlockButton?.classList.remove("active");
+  elements.checklistBlockButton?.classList.remove("active");
   scheduleEditorCanvasRender();
 }
 
@@ -2286,6 +2491,8 @@ function bindDrawingBlockCanvas(canvas, blockId) {
 function startEditorDrawing(event) {
   const note = getSelectedNote();
   if (!canUseDrawingTools(note) || drawingTool.context !== "page" || elements.drawToolPopover.hidden) return;
+  const host = updateEditorDrawingLayerHost(note);
+  syncEditorDrawingLayerSize(host);
   const point = getCanvasPoint(event, elements.editorDrawingCanvas);
   activeDrawingPointer = event.pointerId;
   activeDrawingStroke = createDrawingStroke(point);
@@ -2423,8 +2630,36 @@ function renderEditorDrawingLayer() {
   const hasStoredDrawing = note && note.type !== "goal" && Array.isArray(note.pageDrawings) && note.pageDrawings.length > 0;
   elements.editorDrawingLayer.hidden = !(available || hasStoredDrawing);
   elements.editorDrawingLayer.classList.toggle("active", available);
-  if (!note || note.type === "goal") return;
+  const host = updateEditorDrawingLayerHost(note);
+  if (!note || note.type === "goal" || !host) return;
+  syncEditorDrawingLayerSize(host);
   renderDrawingCanvas(elements.editorDrawingCanvas, note.pageDrawings || []);
+}
+
+function updateEditorDrawingLayerHost(note = getSelectedNote()) {
+  const host = getEditorDrawingHost(note);
+  [elements.noteBlockEditor, elements.checklistEditor, elements.shoppingEditor].forEach((candidate) => {
+    candidate?.classList.toggle("drawing-layer-host", candidate === host);
+  });
+  if (!host || !elements.editorDrawingLayer) return null;
+  if (elements.editorDrawingLayer.parentElement !== host) {
+    host.append(elements.editorDrawingLayer);
+  }
+  return host;
+}
+
+function getEditorDrawingHost(note = getSelectedNote()) {
+  if (!note || note.type === "goal") return null;
+  if (note.type === "note") return elements.noteBlockEditor;
+  if (note.type === "checklist") return elements.checklistEditor;
+  if (note.type === "shopping") return elements.shoppingEditor;
+  return null;
+}
+
+function syncEditorDrawingLayerSize(host = getEditorDrawingHost()) {
+  if (!host || !elements.editorDrawingLayer) return;
+  const height = Math.max(host.scrollHeight, host.clientHeight, 1);
+  elements.editorDrawingLayer.style.height = `${height}px`;
 }
 
 function removeDrawingBlock(blockId) {
@@ -2465,8 +2700,107 @@ function normalizeDrawingBlocks(blocks) {
   }));
 }
 
+function openBlockContextMenu(event, target) {
+  event.preventDefault();
+  event.stopPropagation();
+  closeToolbarContextMenu();
+  closeSiteContextMenu();
+  closeMobileNoteActionMenu();
+  closeTextFormatMenu();
+  blockContextTarget = target;
+
+  const menu = ensureBlockContextMenu();
+  const removeButton = menu.querySelector("[data-block-context-remove]");
+  const isGroup = target?.type === "note" && Array.isArray(target.blockIds) && target.blockIds.length > 1;
+  const removeLabel = isGroup ? "Remover blocos" : "Remover bloco";
+  removeButton.querySelector("span").textContent = removeLabel;
+  removeButton.title = removeLabel;
+  menu.hidden = false;
+  menu.style.left = "0px";
+  menu.style.top = "0px";
+  const bounds = menu.getBoundingClientRect();
+  const left = Math.max(10, Math.min(window.innerWidth - bounds.width - 10, event.clientX));
+  const top = Math.max(10, Math.min(window.innerHeight - bounds.height - 10, event.clientY));
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+}
+
+function ensureBlockContextMenu() {
+  let menu = document.querySelector("#blockContextMenu");
+  if (menu) return menu;
+  menu = document.createElement("div");
+  menu.id = "blockContextMenu";
+  menu.className = "block-context-menu";
+  menu.hidden = true;
+  const removeButton = document.createElement("button");
+  removeButton.type = "button";
+  removeButton.dataset.blockContextRemove = "true";
+  removeButton.className = "danger";
+  removeButton.title = "Remover bloco";
+  removeButton.innerHTML = `<svg><use href="#icon-trash"></use></svg><span>Remover bloco</span>`;
+  removeButton.addEventListener("click", removeContextBlock);
+  menu.append(removeButton);
+  document.body.append(menu);
+  return menu;
+}
+
+function closeBlockContextMenu() {
+  const menu = document.querySelector("#blockContextMenu");
+  if (menu) menu.hidden = true;
+  blockContextTarget = null;
+}
+
+function removeContextBlock() {
+  const target = blockContextTarget;
+  closeBlockContextMenu();
+  if (!target) return;
+
+  if (target.type === "drawing") {
+    removeDrawingBlock(target.blockId);
+    return;
+  }
+
+  if (target.type === "note") {
+    removeNoteBlocks(target.blockIds || []);
+  }
+}
+
+function removeNoteBlocks(blockIds) {
+  const note = getSelectedNote();
+  if (!canEditNoteContent(note) || note.type !== "note" || !Array.isArray(blockIds) || !blockIds.length) return;
+  const sourceIds = new Set(blockIds);
+  const removed = (note.blocks || []).filter((block) => sourceIds.has(block.id));
+  if (!removed.length) return;
+
+  note.blocks = (note.blocks || []).filter((block) => !sourceIds.has(block.id));
+  const removedAttachmentIds = removed
+    .filter((block) => block.type === "image" && block.attachmentId)
+    .map((block) => block.attachmentId);
+  if (removedAttachmentIds.length) {
+    note.attachments = note.attachments.filter((attachment) => (
+      !removedAttachmentIds.includes(attachment.id)
+      || note.blocks.some((block) => block.type === "image" && block.attachmentId === attachment.id)
+    ));
+  }
+  if (!note.blocks.length) {
+    note.blocks = [{ id: cryptoId(), type: "text", text: "", html: "" }];
+  } else {
+    ensureNoteTextBlock(note);
+  }
+  note.content = getTextFromBlocks(note);
+  note.updatedAt = Date.now();
+  saveState();
+  renderEditor();
+  renderNotes();
+  showToast(removed.length > 1 ? "Blocos removidos" : "Bloco removido");
+}
+
 function attachNoteBlockDragHandle(handle, blockIds) {
   if (!handle) return;
+  handle.addEventListener("contextmenu", (event) => {
+    if (!canEditNoteContent(getSelectedNote())) return;
+    openBlockContextMenu(event, { type: "note", blockIds: blockIds.slice() });
+  });
   handle.addEventListener("dragstart", (event) => {
     if (!canEditNoteContent(getSelectedNote())) {
       event.preventDefault();
@@ -2583,6 +2917,10 @@ function reorderShoppingItem(targetItemId) {
 
 function attachDrawingBlockDragHandlers(card, handle, blockId) {
   if (!handle) return;
+  handle.addEventListener("contextmenu", (event) => {
+    if (!canUseDrawingTools(getSelectedNote())) return;
+    openBlockContextMenu(event, { type: "drawing", blockId });
+  });
   handle.addEventListener("dragstart", (event) => {
     if (!canUseDrawingTools(getSelectedNote())) {
       event.preventDefault();
@@ -4037,6 +4375,13 @@ function normalizeNoteBlocks(note) {
         if (block?.type === "image" && block.attachmentId) {
           return { id: block.id || cryptoId(), type: "image", attachmentId: String(block.attachmentId) };
         }
+        if (block?.type === "checklist") {
+          return {
+            id: block.id || cryptoId(),
+            type: "checklist",
+            items: normalizeInlineChecklistItems(block.items),
+          };
+        }
         const html = typeof block?.html === "string" ? sanitizeRichHtml(block.html) : "";
         return {
           id: block?.id || cryptoId(),
@@ -4058,6 +4403,27 @@ function normalizeNoteBlocks(note) {
   return blocks;
 }
 
+function createInlineChecklistBlockData() {
+  return {
+    id: cryptoId(),
+    type: "checklist",
+    items: [{ id: cryptoId(), text: "", done: false }],
+  };
+}
+
+function normalizeInlineChecklistItems(items) {
+  const normalized = Array.isArray(items)
+    ? items
+        .map((item) => ({
+          id: item?.id || cryptoId(),
+          text: typeof item?.text === "string" ? item.text : "",
+          done: Boolean(item?.done),
+        }))
+        .filter((item) => item.text.trim() || item.done || item.id)
+    : [];
+  return normalized.length ? normalized : [{ id: cryptoId(), text: "", done: false }];
+}
+
 function normalizeInlineImage(image) {
   if (!image?.dataUrl) return null;
   return {
@@ -4076,15 +4442,19 @@ function ensureNoteTextBlock(note) {
     note.blocks.push({ id: cryptoId(), type: "text", text: note.content || "", html: "" });
   }
   const last = note.blocks[note.blocks.length - 1];
-  if (last?.type === "image") {
+  if (last?.type === "image" || last?.type === "checklist") {
     note.blocks.push({ id: cryptoId(), type: "text", text: "", html: "" });
   }
 }
 
 function getTextFromBlocks(note) {
   return (note.blocks || [])
-    .filter((block) => block.type === "text")
-    .map((block) => block.text || getPlainTextFromHtml(block.html || ""))
+    .map((block) => {
+      if (block.type === "text") return block.text || getPlainTextFromHtml(block.html || "");
+      if (block.type === "checklist") return normalizeInlineChecklistItems(block.items).map((item) => item.text).filter(Boolean).join("\n");
+      return "";
+    })
+    .filter(Boolean)
     .join("\n")
     .trim();
 }
@@ -4951,6 +5321,113 @@ function removeNoteImageBlock(blockId) {
   });
 }
 
+function getInlineChecklistBlock(note, blockId) {
+  return (note?.blocks || []).find((block) => block.id === blockId && block.type === "checklist");
+}
+
+function updateInlineChecklistItem(blockId, itemId, patch, options = {}) {
+  const note = getSelectedNote();
+  if (!note || note.trashed || note.type !== "note") return;
+  if (note.finalized && !isDoneOnlyPatch(patch)) return;
+  const block = getInlineChecklistBlock(note, blockId);
+  const item = block?.items?.find((candidate) => candidate.id === itemId);
+  if (!item) return;
+
+  if (Object.prototype.hasOwnProperty.call(patch, "done")) item.done = Boolean(patch.done);
+  if (Object.prototype.hasOwnProperty.call(patch, "text") && canEditNoteContent(note)) item.text = String(patch.text || "");
+
+  note.content = getTextFromBlocks(note);
+  note.updatedAt = Date.now();
+  saveState();
+  renderSidebar();
+  renderNotes();
+  elements.updatedLabel.textContent = note.finalized ? `Finalizada \u00b7 Editado ${formatRelativeTime(note.updatedAt)}` : `Editado ${formatRelativeTime(note.updatedAt)}`;
+  if (options.renderEditor !== false) renderEditor();
+}
+
+function addInlineChecklistItem(blockId, text) {
+  if (!canEditNoteContent(getSelectedNote())) return;
+  updateSelectedNote((note) => {
+    const block = getInlineChecklistBlock(note, blockId);
+    if (!block) return;
+    block.items = normalizeInlineChecklistItems(block.items);
+    const emptyItem = block.items.find((item) => !item.text.trim() && !item.done);
+    if (emptyItem) emptyItem.text = text;
+    else block.items.push({ id: cryptoId(), text, done: false });
+    note.content = getTextFromBlocks(note);
+  });
+}
+
+function removeInlineChecklistItem(blockId, itemId) {
+  if (!canEditNoteContent(getSelectedNote())) return;
+  updateSelectedNote((note) => {
+    const block = getInlineChecklistBlock(note, blockId);
+    if (!block) return;
+    block.items = normalizeInlineChecklistItems(block.items).filter((item) => item.id !== itemId);
+    if (!block.items.length) block.items.push({ id: cryptoId(), text: "", done: false });
+    note.content = getTextFromBlocks(note);
+  });
+}
+
+function removeInlineChecklistBlock(blockId) {
+  if (!canEditNoteContent(getSelectedNote())) return;
+  updateSelectedNote((note) => {
+    note.blocks = (note.blocks || []).filter((block) => block.id !== blockId);
+    ensureNoteTextBlock(note);
+    note.content = getTextFromBlocks(note);
+  });
+  showToast("Checklist removido");
+}
+
+function attachInlineChecklistItemDragHandlers(row, handle, blockId, itemId) {
+  if (!row || !handle) return;
+  handle.addEventListener("dragstart", (event) => {
+    const note = getSelectedNote();
+    if (!canEditNoteContent(note) || note.type !== "note") {
+      event.preventDefault();
+      return;
+    }
+    draggedInlineChecklistItem = { blockId, itemId };
+    row.classList.add("dragging");
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", itemId);
+  });
+  handle.addEventListener("dragend", () => {
+    draggedInlineChecklistItem = null;
+    $$(".inline-checklist-row.dragging, .inline-checklist-row.drag-over").forEach((item) => item.classList.remove("dragging", "drag-over"));
+  });
+  row.addEventListener("dragover", (event) => {
+    if (!draggedInlineChecklistItem || draggedInlineChecklistItem.blockId !== blockId || draggedInlineChecklistItem.itemId === itemId) return;
+    event.preventDefault();
+    row.classList.add("drag-over");
+    event.dataTransfer.dropEffect = "move";
+  });
+  row.addEventListener("dragleave", () => row.classList.remove("drag-over"));
+  row.addEventListener("drop", (event) => {
+    if (!draggedInlineChecklistItem) return;
+    event.preventDefault();
+    row.classList.remove("drag-over");
+    reorderInlineChecklistItem(blockId, itemId);
+  });
+}
+
+function reorderInlineChecklistItem(blockId, targetItemId) {
+  const note = getSelectedNote();
+  if (!canEditNoteContent(note) || note.type !== "note" || !draggedInlineChecklistItem) return;
+  if (draggedInlineChecklistItem.blockId !== blockId || draggedInlineChecklistItem.itemId === targetItemId) return;
+  const block = getInlineChecklistBlock(note, blockId);
+  if (!block) return;
+  block.items = normalizeInlineChecklistItems(block.items);
+  reorderArrayItem(block.items, draggedInlineChecklistItem.itemId, targetItemId);
+  draggedInlineChecklistItem = null;
+  note.content = getTextFromBlocks(note);
+  note.updatedAt = Date.now();
+  saveState();
+  renderEditor();
+  renderNotes();
+  showToast("Tópicos reorganizados");
+}
+
 function getChecklistSummary(note) {
   const total = note.items.length;
   const done = note.items.filter((item) => item.done).length;
@@ -5077,6 +5554,7 @@ function getDefaultPreferences() {
     toolbarItems: DEFAULT_TOOLBAR_ITEMS.slice(),
     toolbarLocked: false,
     toolbarDrawingAdded: true,
+    toolbarChecklistBlockAdded: true,
     customCursor: true,
     autocorrect: false,
     autocorrectCustomWords: [],
@@ -5098,6 +5576,7 @@ function normalizePreferencesData(saved, fallback = getDefaultPreferences()) {
     toolbarItems: normalizeToolbarItems(saved.toolbarItems),
     toolbarLocked: Boolean(saved.toolbarLocked),
     toolbarDrawingAdded: Boolean(saved.toolbarDrawingAdded),
+    toolbarChecklistBlockAdded: Boolean(saved.toolbarChecklistBlockAdded),
     customCursor: saved.customCursor !== false,
     autocorrect: saved.autocorrect === true,
     autocorrectCustomWords: normalizeAutocorrectCustomWords(saved.autocorrectCustomWords || fallback.autocorrectCustomWords),
@@ -5109,6 +5588,10 @@ function normalizePreferencesData(saved, fallback = getDefaultPreferences()) {
   if (!saved.toolbarDrawingAdded) {
     normalized.toolbarItems = mergeToolbarItemsWithDefaults(normalized.toolbarItems, ["draw", "drawingBlock"]);
     normalized.toolbarDrawingAdded = true;
+  }
+  if (!saved.toolbarChecklistBlockAdded) {
+    normalized.toolbarItems = mergeToolbarItemsWithDefaults(normalized.toolbarItems, ["checklistBlock"]);
+    normalized.toolbarChecklistBlockAdded = true;
   }
   return normalized;
 }
@@ -5263,6 +5746,8 @@ function renderColorButtons(container, colors, activeColor, onClick) {
     button.style.setProperty("--swatch", color);
     button.dataset.color = color;
     button.classList.toggle("active", color.toLowerCase() === normalizeAccent(activeColor).toLowerCase());
+    button.setAttribute("aria-label", `Cor ${getColorName(color)}`);
+    button.title = `Cor ${getColorName(color)}`;
     button.addEventListener("click", () => onClick(color));
     container.append(button);
   });
@@ -5343,7 +5828,10 @@ function updateToolbarLockState() {
   });
 
   const lockButton = elements.toolbarContextMenu?.querySelector('[data-toolbar-menu="lock"]');
-  if (lockButton) lockButton.textContent = locked ? "Desbloquear barra" : "Bloquear barra";
+  if (lockButton) {
+    lockButton.textContent = locked ? "Desbloquear barra" : "Bloquear barra";
+    lockButton.title = lockButton.textContent;
+  }
 }
 
 function openToolbarContextMenu(event) {
@@ -5358,6 +5846,7 @@ function openToolbarContextMenu(event) {
   if (removeButton) {
     removeButton.disabled = toolbarContextTargetKey === "search";
     removeButton.textContent = toolbarContextTargetKey.startsWith("separator-") ? "Remover separador" : "Remover item";
+    removeButton.title = removeButton.textContent;
   }
 
   elements.toolbarContextMenu.hidden = false;
@@ -6229,6 +6718,7 @@ function restoreBackupData(nextState, nextPreferences = null) {
   draggedNoteBlockIds = [];
   draggedChecklistItemId = "";
   draggedShoppingItemId = "";
+  draggedInlineChecklistItem = null;
   draggedDrawingBlockId = "";
   drawingRedoStacks.clear();
 
@@ -6338,6 +6828,217 @@ function closeSidebar() {
   }
   elements.sidebar.classList.remove("open");
   elements.sidebarScrim.classList.remove("visible");
+}
+
+function setupAutoTooltips() {
+  applyAutoTooltips(document);
+  bindTooltipEvents();
+  tooltipObserver?.disconnect();
+  tooltipObserver = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeType === Node.ELEMENT_NODE) applyAutoTooltips(node);
+      });
+      if (mutation.type === "characterData") {
+        const parent = mutation.target.parentElement;
+        const tooltipRoot = parent?.closest?.("[data-noti-tooltip]");
+        if (tooltipRoot) applyAutoTooltips(tooltipRoot);
+      }
+      if (mutation.type === "attributes") {
+        applyAutoTooltips(mutation.target);
+      }
+    });
+  });
+  tooltipObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+    attributes: true,
+    attributeFilter: ["title", "aria-label", "data-tooltip"],
+  });
+}
+
+function applyAutoTooltips(root = document) {
+  const selector = "button, [role='button'], .attach-button";
+  const candidates = [];
+  if (root.matches?.(selector)) candidates.push(root);
+  root.querySelectorAll?.(selector).forEach((button) => candidates.push(button));
+
+  candidates.forEach((button) => {
+    const label = getAutoTooltipLabel(button);
+    if (!label) return;
+    button.dataset.notiTooltip = label;
+    button.dataset.autoTitle = "true";
+    if (button.getAttribute("title")) {
+      button.dataset.notiTitle = label;
+      button.removeAttribute("title");
+    }
+  });
+}
+
+function getAutoTooltipLabel(element) {
+  const label = element.dataset.tooltip
+    || element.getAttribute("title")
+    || element.getAttribute("aria-label")
+    || element.textContent.replace(/\s+/g, " ").trim();
+  return label.length > 80 ? `${label.slice(0, 77).trim()}...` : label;
+}
+
+function bindTooltipEvents() {
+  if (tooltipEventsBound) return;
+  tooltipEventsBound = true;
+  document.addEventListener("pointerover", handleTooltipPointerOver, true);
+  document.addEventListener("pointerout", handleTooltipPointerOut, true);
+  document.addEventListener("focusin", handleTooltipFocusIn, true);
+  document.addEventListener("focusout", hideHoverTooltip, true);
+  document.addEventListener("pointerdown", hideHoverTooltip, true);
+  window.addEventListener("scroll", hideHoverTooltip, true);
+  window.addEventListener("resize", hideHoverTooltip);
+}
+
+function getTooltipTarget(source) {
+  return source?.closest?.("[data-noti-tooltip]");
+}
+
+function handleTooltipPointerOver(event) {
+  if (event.pointerType === "touch") return;
+  const target = getTooltipTarget(event.target);
+  if (!target || target === tooltipTarget) return;
+  showHoverTooltip(target);
+}
+
+function handleTooltipPointerOut(event) {
+  const target = getTooltipTarget(event.target);
+  if (!target || target !== tooltipTarget || target.contains(event.relatedTarget)) return;
+  hideHoverTooltip();
+}
+
+function handleTooltipFocusIn(event) {
+  const target = getTooltipTarget(event.target);
+  if (target) showHoverTooltip(target);
+}
+
+function showHoverTooltip(target) {
+  const label = target?.dataset?.notiTooltip;
+  if (!label) return;
+  clearTimeout(tooltipHideTimer);
+  tooltipTarget = target;
+  const tooltip = ensureHoverTooltip();
+  tooltip.textContent = label;
+  tooltip.hidden = false;
+  tooltip.classList.remove("visible");
+  requestAnimationFrame(() => {
+    positionHoverTooltip(target, tooltip);
+    tooltip.classList.add("visible");
+  });
+}
+
+function hideHoverTooltip() {
+  clearTimeout(tooltipHideTimer);
+  const tooltip = document.querySelector("#notiHoverTooltip");
+  tooltipTarget = null;
+  if (!tooltip) return;
+  tooltip.classList.remove("visible");
+  tooltipHideTimer = window.setTimeout(() => {
+    if (!tooltip.classList.contains("visible")) tooltip.hidden = true;
+  }, 120);
+}
+
+function ensureHoverTooltip() {
+  let tooltip = document.querySelector("#notiHoverTooltip");
+  if (tooltip) return tooltip;
+  tooltip = document.createElement("div");
+  tooltip.id = "notiHoverTooltip";
+  tooltip.className = "noti-hover-tooltip";
+  tooltip.setAttribute("role", "tooltip");
+  tooltip.hidden = true;
+  document.body.append(tooltip);
+  return tooltip;
+}
+
+function positionHoverTooltip(target, tooltip) {
+  const rect = target.getBoundingClientRect();
+  const bounds = tooltip.getBoundingClientRect();
+  const gap = 10;
+  const centeredLeft = rect.left + rect.width / 2 - bounds.width / 2;
+  const left = Math.max(10, Math.min(window.innerWidth - bounds.width - 10, centeredLeft));
+  const above = rect.top - bounds.height - gap;
+  const below = rect.bottom + gap;
+  const top = above >= 10 ? above : Math.min(window.innerHeight - bounds.height - 10, below);
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${Math.max(10, top)}px`;
+}
+
+function setupPagesUpdateChecker() {
+  if (!elements.updatePageButton || !shouldCheckPagesUpdates()) return;
+  checkPagesUpdate();
+  pagesUpdateTimer = window.setInterval(checkPagesUpdate, PAGES_UPDATE_CHECK_INTERVAL);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) checkPagesUpdate();
+  });
+}
+
+function shouldCheckPagesUpdates() {
+  return location.protocol.startsWith("http") && /(^|\.)github\.io$/i.test(location.hostname);
+}
+
+async function checkPagesUpdate() {
+  try {
+    const signature = await fetchLatestPagesSignature();
+    if (!signature) return;
+    if (!knownPagesSignature) {
+      knownPagesSignature = signature;
+      latestPagesSignature = signature;
+      setUpdateButtonVisible(false);
+      return;
+    }
+    latestPagesSignature = signature;
+    setUpdateButtonVisible(signature !== knownPagesSignature);
+  } catch (error) {
+    console.warn("Não foi possível verificar atualização do Pages.", error);
+  }
+}
+
+async function fetchLatestPagesSignature() {
+  const signatures = await Promise.all(PAGES_UPDATE_ASSETS.map(fetchPagesAssetSignature));
+  return signatures.join("|");
+}
+
+async function fetchPagesAssetSignature(asset) {
+  const url = getPagesAssetUrl(asset);
+  const response = await fetch(url, { method: "HEAD", cache: "no-store" });
+  if (!response.ok) throw new Error(`${asset} respondeu ${response.status}`);
+  const etag = response.headers.get("etag") || "";
+  const modified = response.headers.get("last-modified") || "";
+  const length = response.headers.get("content-length") || "";
+  return `${asset}:${etag}:${modified}:${length}`;
+}
+
+function getPagesAssetUrl(asset) {
+  const scriptSource = document.querySelector('script[src*="app.js"]')?.src || "app.js";
+  const base = new URL(scriptSource, location.href);
+  const url = new URL(asset, base);
+  url.searchParams.set("noti_check", `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`);
+  return url.toString();
+}
+
+function setUpdateButtonVisible(visible) {
+  if (!elements.updatePageButton) return;
+  elements.updatePageButton.hidden = !visible;
+  document.body.classList.toggle("pages-update-available", Boolean(visible));
+  if (visible) {
+    elements.updatePageButton.dataset.tooltip = "Atualizar página";
+    elements.updatePageButton.setAttribute("aria-label", "Atualizar página");
+    applyAutoTooltips(elements.updatePageButton);
+  }
+}
+
+function reloadForPagesUpdate() {
+  if (latestPagesSignature) knownPagesSignature = latestPagesSignature;
+  if (pagesUpdateTimer) window.clearInterval(pagesUpdateTimer);
+  const nextUrl = new URL(location.href);
+  nextUrl.searchParams.set("noti_update", Date.now().toString(36));
+  location.replace(nextUrl.toString());
 }
 
 function showToast(message) {

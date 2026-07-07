@@ -99,6 +99,12 @@
       <symbol id="icon-restore" viewBox="0 0 24 24">
         <path d="M3 12a9 9 0 1 0 3-6.7M3 4v6h6" />
       </symbol>
+      <symbol id="icon-refresh" viewBox="0 0 24 24">
+        <path d="M20 11a8 8 0 0 0-14.2-5" />
+        <path d="M4 5v6h6" />
+        <path d="M4 13a8 8 0 0 0 14.2 5" />
+        <path d="M20 19v-6h-6" />
+      </symbol>
       <symbol id="icon-paperclip" viewBox="0 0 24 24">
         <path d="m21.4 11.6-8.6 8.6a6 6 0 0 1-8.5-8.5l9.4-9.4a4 4 0 0 1 5.7 5.7L10 17.4a2 2 0 0 1-2.8-2.8l8.6-8.6" />
       </symbol>
@@ -241,6 +247,10 @@
           <button class="sidebar-collapse-button" id="sidebarCollapseButton" type="button" aria-label="Compactar barra lateral" aria-pressed="false">
             <svg><use href="#icon-sidebar"></use></svg>
           </button>
+          <button class="update-page-button" id="updatePageButton" type="button" aria-label="Atualizar página" title="Atualizar página" hidden>
+            <svg><use href="#icon-refresh"></use></svg>
+            <span>Atualizar</span>
+          </button>
         </div>
       </aside>
 
@@ -291,6 +301,9 @@
             <button class="mac-tool" id="drawingBlockButton" type="button" data-toolbar-key="drawingBlock" aria-label="Criar bloco de desenho" title="Bloco de desenho">
               <svg><use href="#icon-square-pen"></use></svg>
             </button>
+            <button class="mac-tool" id="checklistBlockButton" type="button" data-toolbar-key="checklistBlock" aria-label="Criar checklist na nota" title="Checklist na nota">
+              <svg><use href="#icon-list"></use></svg>
+            </button>
             <input id="checklistImageInput" type="file" accept="image/*" hidden />
             <button class="mac-tool" id="pinButton" type="button" data-toolbar-key="pin" aria-label="Fixar nota" title="Fixar">
               <svg><use href="#icon-pin"></use></svg>
@@ -327,28 +340,28 @@
           <button class="ghost-action" id="emptyTrashButton">Esvaziar</button>
         </header>
         <div class="toolbar-menu" id="toolbarContextMenu" role="menu" hidden>
-          <button type="button" data-toolbar-menu="remove">Remover item</button>
-          <button type="button" data-toolbar-menu="separator">Adicionar separador</button>
-          <button type="button" data-toolbar-menu="lock">Bloquear barra</button>
-          <button type="button" data-toolbar-menu="reset">Restaurar padrão</button>
+          <button type="button" data-toolbar-menu="remove" title="Remover item">Remover item</button>
+          <button type="button" data-toolbar-menu="separator" title="Adicionar separador">Adicionar separador</button>
+          <button type="button" data-toolbar-menu="lock" title="Bloquear barra">Bloquear barra</button>
+          <button type="button" data-toolbar-menu="reset" title="Restaurar padrão">Restaurar padrão</button>
         </div>
         <div class="mobile-note-action-menu" id="mobileNoteActionMenu" hidden>
-          <button type="button" data-mobile-note-action="pin"><svg><use href="#icon-pin"></use></svg><span>Fixar</span></button>
-          <button type="button" data-mobile-note-action="highlight"><svg><use href="#icon-sun"></use></svg><span>Destacar</span></button>
-          <button type="button" data-mobile-note-action="archive"><svg><use href="#icon-archive"></use></svg><span>Arquivar</span></button>
-          <button type="button" data-mobile-note-action="move"><svg><use href="#icon-folder"></use></svg><span>Mover para pasta</span></button>
-          <button type="button" data-mobile-note-action="edit"><svg><use href="#icon-edit"></use></svg><span>Editar</span></button>
-          <button type="button" data-mobile-note-action="delete"><svg><use href="#icon-trash"></use></svg><span>Apagar</span></button>
-          <button type="button" data-mobile-note-action="restore"><svg><use href="#icon-restore"></use></svg><span>Recuperar</span></button>
+          <button type="button" data-mobile-note-action="pin" title="Fixar"><svg><use href="#icon-pin"></use></svg><span>Fixar</span></button>
+          <button type="button" data-mobile-note-action="highlight" title="Destacar"><svg><use href="#icon-sun"></use></svg><span>Destacar</span></button>
+          <button type="button" data-mobile-note-action="archive" title="Arquivar"><svg><use href="#icon-archive"></use></svg><span>Arquivar</span></button>
+          <button type="button" data-mobile-note-action="move" title="Mover para pasta"><svg><use href="#icon-folder"></use></svg><span>Mover para pasta</span></button>
+          <button type="button" data-mobile-note-action="edit" title="Editar"><svg><use href="#icon-edit"></use></svg><span>Editar</span></button>
+          <button type="button" data-mobile-note-action="delete" title="Apagar"><svg><use href="#icon-trash"></use></svg><span>Apagar</span></button>
+          <button type="button" data-mobile-note-action="restore" title="Recuperar"><svg><use href="#icon-restore"></use></svg><span>Recuperar</span></button>
         </div>
         <div class="note-highlight-menu" id="noteHighlightMenu" hidden>
           <p>Destacar nota</p>
           <div class="note-highlight-colors" id="noteHighlightColors"></div>
-          <button type="button" data-note-highlight-clear>Remover destaque</button>
+          <button type="button" data-note-highlight-clear title="Remover destaque">Remover destaque</button>
         </div>
         <div class="mobile-folder-move-menu" id="mobileFolderMoveMenu" hidden></div>
         <div class="site-context-menu" id="siteContextMenu" hidden>
-          <button type="button" data-site-context-action="new-note"><svg><use href="#icon-note"></use></svg><span>Nova nota</span></button>
+          <button type="button" data-site-context-action="new-note" title="Nova nota"><svg><use href="#icon-note"></use></svg><span>Nova nota</span></button>
         </div>
 
         <section class="content-grid">

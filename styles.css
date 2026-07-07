@@ -247,7 +247,41 @@
   display: none;
 }
 
+.noti-hover-tooltip {
+  position: fixed;
+  z-index: 10000;
+  max-width: min(320px, calc(100vw - 24px));
+  border: 1px solid color-mix(in srgb, #fff 15%, transparent);
+  border-radius: 999px;
+  padding: 10px 16px;
+  background: color-mix(in srgb, #1e1e22 94%, transparent);
+  color: #f5f5f7;
+  box-shadow: 0 16px 46px color-mix(in srgb, #000 34%, transparent);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: 0;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px) scale(.98);
+  transition: opacity 120ms ease, transform 120ms ease;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.noti-hover-tooltip.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.noti-hover-tooltip[hidden] {
+  display: none !important;
+}
+
 .site-context-menu,
+.block-context-menu,
 .mobile-note-action-menu {
   position: fixed;
   z-index: 120;
@@ -265,11 +299,13 @@
 }
 
 .site-context-menu[hidden],
+.block-context-menu[hidden],
 .mobile-note-action-menu[hidden] {
   display: none !important;
 }
 
 .site-context-menu button,
+.block-context-menu button,
 .mobile-note-action-menu button {
   display: flex;
   align-items: center;
@@ -286,11 +322,13 @@
 }
 
 .site-context-menu button:hover,
+.block-context-menu button:hover,
 .mobile-note-action-menu button:hover {
   background: var(--surface-hover);
 }
 
 .site-context-menu svg,
+.block-context-menu svg,
 .mobile-note-action-menu svg {
   width: 17px;
   height: 17px;
@@ -298,6 +336,14 @@
 }
 
 .mobile-note-action-menu [data-mobile-note-action="delete"] {
+  color: var(--danger);
+}
+
+.block-context-menu .danger {
+  color: var(--danger);
+}
+
+.block-context-menu .danger svg {
   color: var(--danger);
 }
 
@@ -600,6 +646,20 @@
   width: 100%;
   height: 100%;
   overflow: visible;
+  transform-origin: 50% 50%;
+  animation: color-wheel-reveal 1.2s cubic-bezier(.2, .8, .2, 1) both;
+}
+
+@keyframes color-wheel-reveal {
+  from {
+    opacity: 0;
+    transform: rotate(-28deg) scale(.92);
+  }
+
+  to {
+    opacity: 1;
+    transform: rotate(0deg) scale(1);
+  }
 }
 
 .color-wheel-segment {
@@ -2365,6 +2425,7 @@ svg {
   body.mobile-screen-editor.mobile-note-editing .mac-toolbar [data-toolbar-key="attach"],
   body.mobile-screen-editor.mobile-note-editing .mac-toolbar [data-toolbar-key="draw"],
   body.mobile-screen-editor.mobile-note-editing .mac-toolbar [data-toolbar-key="drawingBlock"],
+  body.mobile-screen-editor.mobile-note-editing .mac-toolbar [data-toolbar-key="checklistBlock"],
   body.mobile-screen-editor.mobile-note-editing .mac-toolbar [data-toolbar-key="archive"],
   body.mobile-screen-editor.mobile-note-editing .mac-toolbar [data-toolbar-key="delete"] {
     display: inline-grid !important;
@@ -3377,6 +3438,13 @@ svg {
 .mac-tool:disabled,
 .mac-toolbar .attach-button.disabled {
   opacity: 0.36;
+}
+
+.mac-tool:disabled {
+  cursor: not-allowed;
+}
+
+.mac-toolbar .attach-button.disabled {
   pointer-events: none;
 }
 
@@ -6660,7 +6728,8 @@ body.sidebar-collapsed {
 }
 
 .create-menu-button,
-.sidebar-collapse-button {
+.sidebar-collapse-button,
+.update-page-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -6686,7 +6755,8 @@ body.sidebar-collapsed {
 
 .create-menu-button:hover,
 .create-menu-button.active,
-.sidebar-collapse-button:hover {
+.sidebar-collapse-button:hover,
+.update-page-button:hover {
   border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
   background: var(--surface-hover);
 }
@@ -6757,9 +6827,31 @@ body.sidebar-collapsed {
 
 .sidebar-footer {
   display: flex;
-  justify-content: flex-start;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   margin-top: auto;
   padding: 8px 6px 0;
+}
+
+.update-page-button {
+  width: auto;
+  min-width: 42px;
+  height: 36px;
+  gap: 8px;
+  padding: 0 13px;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.update-page-button[hidden] {
+  display: none !important;
+}
+
+.update-page-button svg {
+  width: 17px;
+  height: 17px;
 }
 
 .sidebar-collapse-button {
@@ -6805,6 +6897,22 @@ body.sidebar-collapsed .sidebar-footer {
   width: 100%;
   justify-content: center;
   padding-inline: 0;
+}
+
+body.sidebar-collapsed .sidebar-footer {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+
+body.sidebar-collapsed .update-page-button {
+  order: -1;
+  width: 42px;
+  padding: 0;
+}
+
+body.sidebar-collapsed .update-page-button span {
+  display: none;
 }
 
 
@@ -7069,11 +7177,17 @@ body.sidebar-collapsed .brand-mark {
   position: relative;
 }
 
+.drawing-layer-host {
+  position: relative;
+}
+
 .editor-drawing-layer {
   position: absolute;
-  inset: 92px 34px 24px;
+  left: 0;
+  top: 0;
+  width: 100%;
   z-index: 4;
-  border-radius: 24px;
+  border-radius: 18px;
   pointer-events: none;
 }
 
@@ -7249,7 +7363,6 @@ body.sidebar-collapsed .brand-mark {
 
 @media (max-width: 680px) {
   .editor-drawing-layer {
-    inset: 104px 10px 18px;
     border-radius: 18px;
   }
 
@@ -7328,7 +7441,8 @@ body.sidebar-collapsed .brand-mark {
 }
 
 .note-text-wrapper .note-text-block,
-.note-image-wrapper .note-image-grid {
+.note-image-wrapper .note-image-grid,
+.note-checklist-wrapper .inline-checklist-card {
   min-width: 0;
 }
 
@@ -7336,8 +7450,174 @@ body.sidebar-collapsed .brand-mark {
   margin-top: 7px;
 }
 
-.note-image-wrapper .image-drag-handle {
+.note-image-wrapper .image-drag-handle,
+.note-checklist-wrapper .checklist-block-drag-handle {
   margin-top: 8px;
+}
+
+.inline-checklist-card {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  width: min(720px, 100%);
+  border: 0;
+  border-radius: 0;
+  padding: 0 58px 0 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.inline-checklist-progress {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  background: conic-gradient(var(--accent) var(--progress, 0%), color-mix(in srgb, var(--text) 12%, transparent) 0);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.inline-checklist-progress::before {
+  position: absolute;
+  inset: 5px;
+  border-radius: inherit;
+  background: var(--editor);
+  content: "";
+}
+
+.inline-checklist-progress span {
+  position: relative;
+  z-index: 1;
+}
+
+.inline-checklist-items {
+  display: grid;
+  gap: 4px;
+}
+
+.inline-checklist-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  border: 0;
+  border-radius: 12px;
+  padding: 4px 0;
+  background: transparent;
+}
+
+.inline-checklist-row.editable {
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+}
+
+.inline-checklist-row:focus-within,
+.inline-checklist-row:hover {
+  background: color-mix(in srgb, var(--surface-hover) 58%, transparent);
+}
+
+.inline-item-drag-handle {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  padding: 0;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  color: var(--text-soft);
+  opacity: .72;
+  transition: opacity 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.inline-item-drag-handle:hover {
+  opacity: 1;
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.inline-item-drag-handle svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2;
+}
+
+.inline-checklist-row.dragging {
+  opacity: .55;
+}
+
+.inline-checklist-row.drag-over {
+  outline: 2px solid color-mix(in srgb, var(--accent) 58%, transparent);
+  outline-offset: 2px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.inline-checklist-row input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--accent);
+}
+
+.inline-checklist-row input[type="text"] {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  border-radius: 12px;
+  padding: 6px 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+
+.inline-checklist-row input[type="text"]:focus {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.inline-checklist-row.done input[type="text"],
+.inline-checklist-row.done .inline-checklist-text {
+  color: var(--text-soft);
+  text-decoration: line-through;
+}
+
+.inline-checklist-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+.inline-checklist-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin-top: 2px;
+}
+
+.inline-checklist-form input {
+  min-width: 0;
+  height: 42px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  padding: 0 14px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  outline: 0;
+}
+
+.inline-checklist-form input:focus {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--line));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.inline-checklist-form .primary-action {
+  border-radius: 999px;
 }
 
 .check-item-main {
@@ -7544,6 +7824,26 @@ body.custom-cursor .drawing-block-canvas {
   .note-content-block .block-drag-handle {
     justify-self: end;
     margin: 0;
+  }
+
+  .inline-checklist-card {
+    width: 100%;
+    border-radius: 0;
+    padding: 0 50px 0 0;
+  }
+
+  .inline-checklist-progress {
+    width: 38px;
+    height: 38px;
+  }
+
+  .inline-checklist-form {
+    grid-template-columns: 1fr;
+  }
+
+  .inline-checklist-form .primary-action {
+    width: 100%;
+    justify-content: center;
   }
 
   .check-item-main {
@@ -8854,6 +9154,7 @@ body.custom-cursor .draw-tool-card.dragging .draw-tool-head {
   body.mobile-screen-editor.mobile-note-editing .mac-toolbar [data-toolbar-key="attach"],
   body.mobile-screen-editor.mobile-note-editing .mac-toolbar [data-toolbar-key="draw"],
   body.mobile-screen-editor.mobile-note-editing .mac-toolbar [data-toolbar-key="drawingBlock"],
+  body.mobile-screen-editor.mobile-note-editing .mac-toolbar [data-toolbar-key="checklistBlock"],
   body.mobile-screen-editor.mobile-note-editing .mac-toolbar [data-toolbar-key="archive"],
   body.mobile-screen-editor.mobile-note-editing .mac-toolbar [data-toolbar-key="delete"] {
     display: inline-grid !important;
