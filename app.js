@@ -7024,13 +7024,11 @@ function getPagesAssetUrl(asset) {
 
 function setUpdateButtonVisible(visible) {
   if (!elements.updatePageButton) return;
-  elements.updatePageButton.hidden = !visible;
+  elements.updatePageButton.hidden = false;
   document.body.classList.toggle("pages-update-available", Boolean(visible));
-  if (visible) {
-    elements.updatePageButton.dataset.tooltip = "Atualizar página";
-    elements.updatePageButton.setAttribute("aria-label", "Atualizar página");
-    applyAutoTooltips(elements.updatePageButton);
-  }
+  elements.updatePageButton.dataset.tooltip = visible ? "Atualizar página: nova versão disponível" : "Atualizar página";
+  elements.updatePageButton.setAttribute("aria-label", "Atualizar página");
+  applyAutoTooltips(elements.updatePageButton);
 }
 
 function reloadForPagesUpdate() {

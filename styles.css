@@ -208,6 +208,37 @@
   }
 }
 
+@media (max-width: 680px) {
+  body.mobile-layout .sidebar-footer {
+    position: sticky !important;
+    bottom: max(14px, env(safe-area-inset-bottom)) !important;
+    z-index: 5 !important;
+    display: flex !important;
+    justify-content: center !important;
+    width: 100% !important;
+    margin-top: auto !important;
+    padding: 22px 0 0 !important;
+  }
+
+  body.mobile-layout .sidebar-collapse-button {
+    display: none !important;
+  }
+
+  body.mobile-layout .update-page-button {
+    width: min(240px, 100%) !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    border-radius: 999px !important;
+    padding: 0 18px !important;
+    background: color-mix(in srgb, var(--surface) 92%, transparent) !important;
+    box-shadow: 0 12px 30px color-mix(in srgb, #000 14%, transparent) !important;
+  }
+
+  body.mobile-layout .update-page-button span {
+    display: inline !important;
+  }
+}
+
 /* Override final: barra de formatacao mobile sempre acessivel no modo de edicao */
 @media (max-width: 680px) {
   html body.mobile-layout.mobile-screen-editor.mobile-note-editing .text-format-toolbar:not([hidden]) {
