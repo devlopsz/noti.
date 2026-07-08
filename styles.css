@@ -2124,6 +2124,145 @@ body.notes-selection-mode .note-card:nth-of-type(2n) {
   padding: clamp(18px, 3vw, 42px);
 }
 
+.pass-time-game,
+.tic-tac-toe-game {
+  display: grid;
+  justify-items: center;
+  gap: clamp(18px, 3vw, 28px);
+  width: min(760px, calc(100vw - 96px));
+  color: var(--text);
+}
+
+.pass-time-header {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.pass-time-header span {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 620;
+}
+
+.pass-time-header h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(32px, 4.5vw, 52px);
+  font-weight: 620;
+  line-height: 1.04;
+}
+
+.pass-time-header p {
+  max-width: 420px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.pass-time-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  width: min(560px, 100%);
+}
+
+.pass-time-card {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  min-height: 174px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  padding: 22px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  box-shadow: 0 18px 60px color-mix(in srgb, #000 8%, transparent);
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.pass-time-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+}
+
+.pass-time-card-icon {
+  display: inline-grid;
+  place-items: center;
+  min-width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  padding: 0 12px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 760;
+}
+
+.pass-time-card strong {
+  font-size: 22px;
+  font-weight: 620;
+}
+
+.pass-time-card small {
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.pass-time-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.tic-tac-toe-board {
+  display: grid;
+  grid-template-columns: repeat(3, clamp(78px, 9vw, 118px));
+  gap: 10px;
+}
+
+.tic-tac-toe-cell {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--text) 6%, var(--surface));
+  color: var(--text);
+  font: inherit;
+  font-size: clamp(42px, 7vw, 70px);
+  font-weight: 520;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.tic-tac-toe-cell:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
+.tic-tac-toe-cell[data-value="X"] {
+  color: var(--accent);
+}
+
+.tic-tac-toe-cell[data-value="O"] {
+  color: color-mix(in srgb, var(--text) 72%, var(--accent));
+}
+
+.tic-tac-toe-cell:disabled {
+  cursor: default;
+}
+
 .time-game {
   --game-correct: #3fb6a8;
   --game-present: #d8b562;
@@ -2458,6 +2597,7 @@ body.notes-selection-mode .note-card:nth-of-type(2n) {
   .time-game-cell.reveal[data-state] {
     animation: none;
   }
+
 }
 
 .empty-orb {
@@ -10215,6 +10355,59 @@ body.custom-cursor .draw-tool-card.dragging .draw-tool-head {
   body.mobile-screen-game .time-game {
     width: min(100%, 372px) !important;
     gap: clamp(8px, 1.45vh, 12px) !important;
+  }
+
+  body.mobile-screen-game .pass-time-game,
+  body.mobile-screen-game .tic-tac-toe-game {
+    width: min(100%, 372px) !important;
+    gap: 16px !important;
+    padding: 2px 0 18px !important;
+  }
+
+  body.mobile-screen-game .pass-time-header {
+    gap: 6px !important;
+  }
+
+  body.mobile-screen-game .pass-time-header h2 {
+    font-size: clamp(30px, 9vw, 38px) !important;
+  }
+
+  body.mobile-screen-game .pass-time-header p {
+    max-width: 300px !important;
+    font-size: 14px !important;
+  }
+
+  body.mobile-screen-game .pass-time-grid {
+    grid-template-columns: 1fr !important;
+    width: min(100%, 318px) !important;
+    gap: 10px !important;
+  }
+
+  body.mobile-screen-game .pass-time-card {
+    min-height: 128px !important;
+    border-radius: 22px !important;
+    padding: 18px !important;
+  }
+
+  body.mobile-screen-game .pass-time-card-icon {
+    min-width: 40px !important;
+    height: 40px !important;
+    border-radius: 13px !important;
+    font-size: 14px !important;
+  }
+
+  body.mobile-screen-game .pass-time-card strong {
+    font-size: 20px !important;
+  }
+
+  body.mobile-screen-game .tic-tac-toe-board {
+    grid-template-columns: repeat(3, minmax(0, 92px)) !important;
+    gap: 8px !important;
+  }
+
+  body.mobile-screen-game .tic-tac-toe-cell {
+    border-radius: 18px !important;
+    font-size: clamp(38px, 13vw, 54px) !important;
   }
 
   body.mobile-screen-game .time-game-header {

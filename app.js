@@ -369,6 +369,8 @@ let isApplyingAutocorrect = false;
 let noteSelectionMode = false;
 const selectedNoteIds = new Set();
 let timeGame = createTimeGameState({ active: false });
+let passTimeScreen = "";
+let ticTacToeGame = createTicTacToeState();
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -616,7 +618,7 @@ function bindEvents() {
   elements.mobileBackButton.addEventListener("click", handleMobileBack);
   elements.mobileSettingsButton?.addEventListener("click", openMobileSettings);
   elements.mobileAccountButton?.addEventListener("click", openMobileAccount);
-  elements.mobileTimeGameButton?.addEventListener("click", openTimeGame);
+  elements.mobileTimeGameButton?.addEventListener("click", openPassTimeMenu);
   elements.mobileMoreButton?.addEventListener("click", toggleMobileMoreMenu);
   elements.mobileEditButton.addEventListener("click", enableMobileNoteEditing);
   elements.mobileFinishButton.addEventListener("click", toggleFinalizeSelectedNote);
@@ -741,7 +743,7 @@ function bindEvents() {
       return;
     }
 
-    if (timeGame.active && !selectedNoteId && !isMobileLayout() && !isNativeEditableTarget(event.target)) {
+    if (passTimeScreen === "time" && timeGame.active && !selectedNoteId && !isMobileLayout() && !isNativeEditableTarget(event.target)) {
       handleTimeGameKeydown(event);
     }
   });
@@ -992,7 +994,7 @@ function handleMobileBack() {
     return;
   }
   if (mobileScreen === "game") {
-    timeGame.active = false;
+    closePassTimeGames();
     showMobileScreen("folders");
     return;
   }
@@ -1869,6 +1871,7 @@ function renderEditor() {
     return;
   }
 
+  closePassTimeGames();
   const isFinalized = Boolean(note.finalized);
   const contentLocked = note.trashed || isFinalized;
   if (!canUseDrawingTools(note) && !elements.drawToolPopover.hidden) closeDrawingTool();
@@ -4533,11 +4536,11 @@ function getWelcomeGreeting() {
 
 function renderEditorEmptyGreeting() {
   elements.editorEmpty.replaceChildren();
-  const showGame = timeGame.active && (!isMobileLayout() || mobileScreen === "game");
+  const showGame = hasPassTimeGameOpen() && (!isMobileLayout() || mobileScreen === "game");
   elements.editorEmpty.classList.toggle("desktop-game-empty", Boolean(showGame));
   elements.editorEmpty.classList.add("desktop-greeting-empty");
   if (showGame) {
-    renderTimeGame();
+    renderPassTimeGame();
     return;
   }
   const greeting = getWelcomeGreeting();
@@ -4549,19 +4552,302 @@ function renderEditorEmptyGreeting() {
     button.className = "time-game-open-button";
     button.type = "button";
     button.textContent = "Passar o Tempo";
-    button.title = "Abrir jogo de palavras";
-    button.addEventListener("click", openTimeGame);
+    button.title = "Abrir jogos";
+    button.addEventListener("click", openPassTimeMenu);
     wrapper.append(button);
   }
   elements.editorEmpty.append(wrapper);
 }
 
 function closeDesktopEditorToGreeting() {
-  if (isMobileLayout() || (!selectedNoteId && !timeGame.active)) return;
+  if (isMobileLayout() || (!selectedNoteId && !hasPassTimeGameOpen())) return;
   selectedNoteId = null;
-  timeGame.active = false;
+  closePassTimeGames();
   renderNotes();
   renderEditor();
+}
+
+function hasPassTimeGameOpen() {
+  return Boolean(passTimeScreen || timeGame.active || ticTacToeGame.active);
+}
+
+function closePassTimeGames() {
+  passTimeScreen = "";
+  timeGame.active = false;
+  ticTacToeGame = createTicTacToeState();
+}
+
+function openPassTimeMenu() {
+  selectedNoteId = null;
+  passTimeScreen = "menu";
+  timeGame.active = false;
+  ticTacToeGame = createTicTacToeState();
+  renderNotes();
+  if (isMobileLayout()) showMobileScreen("game");
+  renderEditor();
+}
+
+function renderPassTimeGame() {
+  if (passTimeScreen === "time" && timeGame.active) {
+    renderTimeGame();
+    return;
+  }
+  if (passTimeScreen === "tic-mode") {
+    renderTicTacToeModeMenu();
+    return;
+  }
+  if (passTimeScreen === "tic" && ticTacToeGame.active) {
+    renderTicTacToeGame();
+    return;
+  }
+  renderPassTimeMenu();
+}
+
+function renderPassTimeMenu() {
+  elements.editorEmpty.replaceChildren();
+  const section = document.createElement("section");
+  section.className = "pass-time-game";
+  section.setAttribute("aria-label", "Jogos para passar o tempo");
+
+  const header = document.createElement("header");
+  header.className = "pass-time-header";
+  header.innerHTML = "<span>Passar o Tempo</span><h2>Escolha um jogo</h2><p>Uma pausa rápida, sem sair do Noti.</p>";
+
+  const grid = document.createElement("div");
+  grid.className = "pass-time-grid";
+  grid.append(
+    createPassTimeCard({
+      title: "Termo",
+      text: "Adivinhe uma palavra de 5 letras em 6 tentativas.",
+      icon: "T",
+      action: openTimeGame
+    }),
+    createPassTimeCard({
+      title: "Jogo da velha",
+      text: "Jogue contra o computador ou com outra pessoa.",
+      icon: "X",
+      action: openTicTacToeModeMenu
+    })
+  );
+
+  section.append(header, grid);
+  elements.editorEmpty.append(section);
+}
+
+function createPassTimeCard({ title, text, icon, action }) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "pass-time-card";
+  button.title = title;
+  button.innerHTML = `<span class="pass-time-card-icon">${icon}</span><strong>${title}</strong><small>${text}</small>`;
+  button.addEventListener("click", action);
+  return button;
+}
+
+function openTicTacToeModeMenu() {
+  selectedNoteId = null;
+  passTimeScreen = "tic-mode";
+  timeGame.active = false;
+  ticTacToeGame = createTicTacToeState();
+  if (isMobileLayout()) showMobileScreen("game");
+  renderEditor();
+}
+
+function renderTicTacToeModeMenu() {
+  elements.editorEmpty.replaceChildren();
+  const section = document.createElement("section");
+  section.className = "pass-time-game";
+  section.setAttribute("aria-label", "Escolher modo do jogo da velha");
+
+  const header = document.createElement("header");
+  header.className = "pass-time-header";
+  header.innerHTML = "<span>Jogo da velha</span><h2>Como você quer jogar?</h2><p>Escolha o modo da partida.</p>";
+
+  const grid = document.createElement("div");
+  grid.className = "pass-time-grid";
+  grid.append(
+    createPassTimeCard({
+      title: "Computador",
+      text: "Você joga de X e o Noti responde de O.",
+      icon: "CPU",
+      action: () => startTicTacToeGame("computer")
+    }),
+    createPassTimeCard({
+      title: "Outra pessoa",
+      text: "Dois jogadores alternando no mesmo aparelho.",
+      icon: "2P",
+      action: () => startTicTacToeGame("local")
+    })
+  );
+
+  const actions = document.createElement("div");
+  actions.className = "pass-time-actions";
+  const backButton = document.createElement("button");
+  backButton.type = "button";
+  backButton.className = "time-game-next-button";
+  backButton.textContent = "Voltar";
+  backButton.title = "Voltar para jogos";
+  backButton.addEventListener("click", openPassTimeMenu);
+  actions.append(backButton);
+
+  section.append(header, grid, actions);
+  elements.editorEmpty.append(section);
+}
+
+function createTicTacToeState(mode = "local") {
+  return {
+    active: false,
+    mode,
+    board: Array(9).fill(""),
+    current: "X",
+    winner: "",
+    ended: false,
+    status: "Vez do X"
+  };
+}
+
+function startTicTacToeGame(mode = "local") {
+  selectedNoteId = null;
+  passTimeScreen = "tic";
+  timeGame.active = false;
+  ticTacToeGame = { ...createTicTacToeState(mode), active: true, status: mode === "computer" ? "Sua vez" : "Vez do X" };
+  if (isMobileLayout()) showMobileScreen("game");
+  renderEditor();
+}
+
+function renderTicTacToeGame() {
+  elements.editorEmpty.replaceChildren();
+  const game = document.createElement("section");
+  game.className = "tic-tac-toe-game";
+  game.setAttribute("aria-label", "Jogo da velha");
+
+  const header = document.createElement("header");
+  header.className = "pass-time-header tic-tac-toe-header";
+  header.innerHTML = `<span>${ticTacToeGame.mode === "computer" ? "Contra o computador" : "Duas pessoas"}</span><h2>Jogo da velha</h2><p>${ticTacToeGame.status}</p>`;
+
+  const board = document.createElement("div");
+  board.className = "tic-tac-toe-board";
+  ticTacToeGame.board.forEach((value, index) => {
+    const cell = document.createElement("button");
+    cell.type = "button";
+    cell.className = "tic-tac-toe-cell";
+    cell.dataset.index = String(index);
+    if (value) cell.dataset.value = value;
+    cell.textContent = value;
+    cell.title = value ? `Casa marcada com ${value}` : "Marcar casa";
+    cell.disabled = ticTacToeGame.ended || Boolean(value) || (ticTacToeGame.mode === "computer" && ticTacToeGame.current === "O");
+    cell.addEventListener("click", () => handleTicTacToeMove(index));
+    board.append(cell);
+  });
+
+  const actions = document.createElement("div");
+  actions.className = "pass-time-actions";
+  const restartButton = document.createElement("button");
+  restartButton.type = "button";
+  restartButton.className = "time-game-next-button";
+  restartButton.textContent = "Nova partida";
+  restartButton.title = "Recomeçar jogo da velha";
+  restartButton.addEventListener("click", () => startTicTacToeGame(ticTacToeGame.mode));
+  const modeButton = document.createElement("button");
+  modeButton.type = "button";
+  modeButton.className = "time-game-next-button";
+  modeButton.textContent = "Trocar modo";
+  modeButton.title = "Escolher outro modo";
+  modeButton.addEventListener("click", openTicTacToeModeMenu);
+  const gamesButton = document.createElement("button");
+  gamesButton.type = "button";
+  gamesButton.className = "time-game-next-button";
+  gamesButton.textContent = "Jogos";
+  gamesButton.title = "Voltar para jogos";
+  gamesButton.addEventListener("click", openPassTimeMenu);
+  actions.append(restartButton, modeButton, gamesButton);
+
+  game.append(header, board, actions);
+  elements.editorEmpty.append(game);
+}
+
+function handleTicTacToeMove(index) {
+  if (!ticTacToeGame.active || ticTacToeGame.ended || ticTacToeGame.board[index]) return;
+  applyTicTacToeMove(index, ticTacToeGame.current);
+  const result = getTicTacToeResult(ticTacToeGame.board);
+  if (finishTicTacToeTurn(result)) {
+    renderEditor();
+    return;
+  }
+  if (ticTacToeGame.mode === "computer" && ticTacToeGame.current === "X") {
+    ticTacToeGame.current = "O";
+    ticTacToeGame.status = "Computador pensando...";
+    renderEditor();
+    window.setTimeout(makeTicTacToeComputerMove, 260);
+    return;
+  }
+  ticTacToeGame.current = ticTacToeGame.current === "X" ? "O" : "X";
+  ticTacToeGame.status = `Vez do ${ticTacToeGame.current}`;
+  renderEditor();
+}
+
+function applyTicTacToeMove(index, player) {
+  ticTacToeGame.board[index] = player;
+}
+
+function makeTicTacToeComputerMove() {
+  if (!ticTacToeGame.active || ticTacToeGame.ended || ticTacToeGame.mode !== "computer" || ticTacToeGame.current !== "O") return;
+  const index = chooseTicTacToeComputerMove(ticTacToeGame.board);
+  if (index === -1) return;
+  applyTicTacToeMove(index, "O");
+  const result = getTicTacToeResult(ticTacToeGame.board);
+  if (!finishTicTacToeTurn(result)) {
+    ticTacToeGame.current = "X";
+    ticTacToeGame.status = "Sua vez";
+  }
+  renderEditor();
+}
+
+function chooseTicTacToeComputerMove(board) {
+  const empty = board.map((value, index) => value ? -1 : index).filter((index) => index >= 0);
+  const winningMove = findTicTacToeLineMove(board, "O");
+  if (winningMove !== -1) return winningMove;
+  const blockMove = findTicTacToeLineMove(board, "X");
+  if (blockMove !== -1) return blockMove;
+  if (empty.includes(4)) return 4;
+  const corners = [0, 2, 6, 8].filter((index) => empty.includes(index));
+  if (corners.length) return corners[Math.floor(Math.random() * corners.length)];
+  return empty[0] ?? -1;
+}
+
+function findTicTacToeLineMove(board, player) {
+  const lines = getTicTacToeLines();
+  for (const line of lines) {
+    const values = line.map((index) => board[index]);
+    if (values.filter((value) => value === player).length === 2 && values.includes("")) {
+      return line[values.indexOf("")];
+    }
+  }
+  return -1;
+}
+
+function finishTicTacToeTurn(result) {
+  if (!result) return false;
+  ticTacToeGame.ended = true;
+  ticTacToeGame.winner = result === "draw" ? "" : result;
+  ticTacToeGame.status = result === "draw" ? "Deu velha" : `${result} venceu`;
+  return true;
+}
+
+function getTicTacToeResult(board) {
+  for (const line of getTicTacToeLines()) {
+    const [a, b, c] = line;
+    if (board[a] && board[a] === board[b] && board[a] === board[c]) return board[a];
+  }
+  return board.every(Boolean) ? "draw" : "";
+}
+
+function getTicTacToeLines() {
+  return [
+    [0, 1, 2], [3, 4, 5], [6, 7, 8],
+    [0, 3, 6], [1, 4, 7], [2, 5, 8],
+    [0, 4, 8], [2, 4, 6]
+  ];
 }
 
 function createTimeGameState(options = {}) {
@@ -4598,6 +4884,8 @@ function pickTimeGameWord(previousSolution = "") {
 function openTimeGame() {
   const previousSolution = timeGame.solution;
   selectedNoteId = null;
+  passTimeScreen = "time";
+  ticTacToeGame = createTicTacToeState();
   timeGame = createTimeGameState({ active: true, previousSolution });
   renderNotes();
   if (isMobileLayout()) {
@@ -4609,6 +4897,7 @@ function openTimeGame() {
 
 function startNextTimeGameRound() {
   const previousSolution = timeGame.solution;
+  passTimeScreen = "time";
   timeGame = createTimeGameState({ active: true, previousSolution });
   renderEditor();
   focusTimeGameArea();
