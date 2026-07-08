@@ -38,29 +38,31 @@ const TIME_GAME_KEY_ROWS = [
 ];
 const TIME_GAME_BASE_WORDS = [
   "abaco", "abril", "abrir", "acaso", "acido", "adeus", "adubo", "agora", "agudo", "ainda", "album", "algum", "altar", "amado", "amigo", "andar", "anexo", "antes", "areia", "arroz", "astro", "atual",
-  "baixo", "banal", "banco", "banho", "barco", "beijo", "bicho", "bolsa", "brasa", "bravo", "breve", "brisa", "bruto", "burro", "busca",
+  "baixo", "banal", "banco", "banho", "barco", "beijo", "bicho", "bunda", "bolsa", "brasa", "bravo", "breve", "briga", "brisa", "bruto", "burro", "busca",
   "caixa", "caldo", "calma", "campo", "canal", "canto", "cargo", "carne", "carro", "carta", "casal", "casar", "causa", "cedro", "censo", "certo", "chave", "cheio", "chuva", "claro", "clube", "cobra", "cofre", "coisa", "corte", "couro", "cravo", "creme", "culpa", "curso",
-  "dados", "dança", "deixa", "denso", "dente", "desde", "disco", "doido", "drama", "duplo", "duque",
-  "elite", "entre", "envio", "erros", "etapa", "exato",
-  "facil", "falar", "falta", "fardo", "farol", "festa", "filme", "final", "firme", "fixar", "folga", "folha", "fonte", "forma", "forte", "frase", "fruta", "fundo",
+  "dados", "dança", "deixa", "denso", "dente", "desde", "disco", "doido", "drama", "duplo", "duque", "duelo",
+  "elite", "entre", "envio", "erros", "etapa", "exame", "exato",
+  "fácil", "falar", "falta", "fardo", "farol", "festa", "filme", "final", "firme", "fixar", "folga", "folha", "fonte", "forma", "forte", "frase", "fruta", "fundo",
   "ganho", "garfo", "gasto", "gente", "gesto", "girar", "globo", "golpe", "gosto", "grade", "grupo", "guia",
   "honra", "hotel", "humor",
-  "idade", "igual", "ileso", "impar", "jogar", "junto", "justo",
-  "lapis", "largo", "leite", "lento", "letra", "limao", "limpo", "lindo", "linha", "livro", "local", "longe", "lugar",
-  "maior", "manga", "marca", "marco", "marte", "massa", "medir", "menos", "mente", "mesma", "mesmo", "metro", "misto", "moral", "morro", "morte", "mudar", "mundo", "museu",
+  "idade", "igual", "ileso", "ímpar", "jogar", "junto", "justo",
+  "lápis", "largo", "leite", "lento", "letra", "limão", "limpo", "lindo", "linha", "livro", "local", "longe", "lugar",
+  "maior", "manga", "marca", "março", "marte", "massa", "medir", "meião", "menos", "mente", "mesma", "mesmo", "metro", "misto", "moral", "morro", "morte", "mudar", "mundo", "museu",
   "nadar", "nasal", "navio", "negro", "nobre", "noite", "norte", "notas", "nuvem",
-  "obras", "odiar", "olhar", "ontem", "opção", "ordem", "orgão", "ossos", "outro", "ouvir",
-  "pagar", "papel", "parar", "parte", "passo", "pasta", "pedra", "peixe", "perto", "pesar", "piano", "pilar", "pinto", "pista", "plano", "pleno", "poder", "poema", "ponto", "porco", "porta", "pouco", "praia", "preto", "prova", "pular",
+  "obras", "odiar", "olhar", "ontem", "opção", "ordem", "órgão", "ossos", "outro", "ouvir",
+  "pagar", "papel", "parar", "parte", "passo", "pasta", "pedra", "peito", "peixe", "perto", "pesar", "piano", "pilar", "pinto", "pista", "plano", "pleno", "poder", "poema", "ponto", "porco", "porta", "pouco", "prato", "praia", "preto", "prova", "pular",
   "quase", "queda", "quero", "quilo",
-  "raiva", "razao", "regra", "reino", "relva", "renda", "resto", "ritmo", "risco", "rosto", "roupa",
-  "sabor", "salto", "santo", "saude", "secar", "selar", "senso", "sinal", "sobre", "sonho", "sorte", "subir", "sutil",
-  "tarde", "tenso", "tempo", "termo", "terra", "texto", "tigre", "tocar", "todos", "tomar", "torre", "trago", "trama", "trevo", "troca", "turma",
-  "unico", "uniao", "urgir", "usual",
+  "raiva", "razão", "regra", "reino", "relva", "renda", "resto", "ritmo", "risco", "rosto", "roupa",
+  "sabor", "salto", "santo", "saúde", "secar", "selar", "senso", "sinal", "sobre", "sonho", "sorte", "subir", "sutil",
+  "tarde", "tenso", "tempo", "termo", "terra", "teste", "texto", "tigre", "tocar", "todos", "tomar", "torre", "trago", "trama", "trato", "trevo", "troca", "turma",
+  "único", "união", "urgir", "usual",
   "valor", "vapor", "vazio", "velho", "vento", "verde", "verbo", "vidro", "vinho", "viral", "vista", "viver", "volta",
   "zebra", "zerar",
 ];
-const TIME_GAME_WORDS = Array.from(new Set(TIME_GAME_BASE_WORDS.map((word) => normalizeTimeGameWord(word)).filter((word) => word.length === TIME_GAME_WORD_LENGTH))).sort();
+const TIME_GAME_WORD_ENTRIES = buildTimeGameWordEntries(TIME_GAME_BASE_WORDS);
+const TIME_GAME_WORDS = TIME_GAME_WORD_ENTRIES.map((entry) => entry.normalized);
 const TIME_GAME_VALID_WORDS = new Set(TIME_GAME_WORDS);
+const TIME_GAME_WORD_DISPLAY_BY_NORMALIZED = new Map(TIME_GAME_WORD_ENTRIES.map((entry) => [entry.normalized, entry.display]));
 const AUTOCORRECT_WORDS = new Map(Object.entries({
   acao: "ação",
   acoes: "ações",
@@ -396,6 +398,7 @@ const elements = {
   mobileAccountButton: $("#mobileAccountButton"),
   mobileAccountAvatar: $("#mobileAccountAvatar"),
   mobileAccountLabel: $("#mobileAccountLabel"),
+  mobileTimeGameButton: $("#mobileTimeGameButton"),
   mobileMoreButton: $("#mobileMoreButton"),
   mobileMoreMenu: $("#mobileMoreMenu"),
   mobileEditButton: $("#mobileEditButton"),
@@ -613,6 +616,7 @@ function bindEvents() {
   elements.mobileBackButton.addEventListener("click", handleMobileBack);
   elements.mobileSettingsButton?.addEventListener("click", openMobileSettings);
   elements.mobileAccountButton?.addEventListener("click", openMobileAccount);
+  elements.mobileTimeGameButton?.addEventListener("click", openTimeGame);
   elements.mobileMoreButton?.addEventListener("click", toggleMobileMoreMenu);
   elements.mobileEditButton.addEventListener("click", enableMobileNoteEditing);
   elements.mobileFinishButton.addEventListener("click", toggleFinalizeSelectedNote);
@@ -887,7 +891,7 @@ function setupMobileLayout() {
 
 function showMobileScreen(screen) {
   if (!isMobileLayout()) return;
-  mobileScreen = ["folders", "list", "editor"].includes(screen) ? screen : "folders";
+  mobileScreen = ["folders", "list", "editor", "game"].includes(screen) ? screen : "folders";
   closeMobileMoreMenu();
   closeMobileNoteActionMenu();
   updateMobileLayoutState();
@@ -901,6 +905,7 @@ function updateMobileLayoutState() {
   document.body.classList.toggle("mobile-screen-folders", mobile && mobileScreen === "folders");
   document.body.classList.toggle("mobile-screen-list", mobile && mobileScreen === "list");
   document.body.classList.toggle("mobile-screen-editor", mobile && mobileScreen === "editor");
+  document.body.classList.toggle("mobile-screen-game", mobile && mobileScreen === "game");
   document.body.classList.toggle("mobile-view-trash", isTrashList);
   document.body.classList.toggle("mobile-note-editing", mobile && mobileScreen === "editor" && Boolean(getSelectedNote() && !getSelectedNote().finalized && !getSelectedNote().trashed));
   document.body.classList.toggle("mobile-note-finalized", mobile && mobileScreen === "editor" && Boolean(getSelectedNote()?.finalized));
@@ -984,6 +989,11 @@ function handleMobileBack() {
   if (!isMobileLayout()) return;
   if (!elements.settingsModal.hidden) {
     closeModals();
+    return;
+  }
+  if (mobileScreen === "game") {
+    timeGame.active = false;
+    showMobileScreen("folders");
     return;
   }
   if (mobileScreen === "editor") {
@@ -4523,9 +4533,10 @@ function getWelcomeGreeting() {
 
 function renderEditorEmptyGreeting() {
   elements.editorEmpty.replaceChildren();
-  elements.editorEmpty.classList.toggle("desktop-game-empty", Boolean(timeGame.active && !isMobileLayout()));
+  const showGame = timeGame.active && (!isMobileLayout() || mobileScreen === "game");
+  elements.editorEmpty.classList.toggle("desktop-game-empty", Boolean(showGame));
   elements.editorEmpty.classList.add("desktop-greeting-empty");
-  if (timeGame.active && !isMobileLayout()) {
+  if (showGame) {
     renderTimeGame();
     return;
   }
@@ -4559,9 +4570,16 @@ function createTimeGameState(options = {}) {
     solution: pickTimeGameWord(options.previousSolution),
     guesses: [],
     current: "",
+    currentLetters: Array(TIME_GAME_WORD_LENGTH).fill(""),
+    activeIndex: 0,
     keyStates: {},
     status: "Adivinhe a palavra de 5 letras",
     statusTone: "",
+    animation: "",
+    animationId: 0,
+    animationIndex: -1,
+    revealRow: -1,
+    lastPoints: 0,
     ended: false,
   };
 }
@@ -4582,6 +4600,9 @@ function openTimeGame() {
   selectedNoteId = null;
   timeGame = createTimeGameState({ active: true, previousSolution });
   renderNotes();
+  if (isMobileLayout()) {
+    showMobileScreen("game");
+  }
   renderEditor();
   focusTimeGameArea();
 }
@@ -4604,25 +4625,52 @@ function renderTimeGame() {
   game.className = "time-game";
   game.setAttribute("aria-label", "Jogo de palavras");
 
+  const header = document.createElement("div");
+  header.className = "time-game-header";
+
   const status = document.createElement("div");
   status.className = "time-game-status";
   status.dataset.tone = timeGame.statusTone || "neutral";
   status.setAttribute("aria-live", "polite");
   status.textContent = timeGame.status;
 
+  const score = document.createElement("aside");
+  score.className = "time-game-score";
+  score.title = getCurrentUser() ? "Pontos salvos na sua conta local" : "Entre para salvar pontos na conta local";
+  score.innerHTML = "<span>Pontos</span><strong></strong>";
+  score.querySelector("strong").textContent = String(getTimeGameScore());
+
+  header.append(status, score);
+
   const board = document.createElement("div");
   board.className = "time-game-board";
   for (let rowIndex = 0; rowIndex < TIME_GAME_MAX_ATTEMPTS; rowIndex += 1) {
     const submitted = timeGame.guesses[rowIndex];
     const isCurrentRow = !timeGame.ended && rowIndex === timeGame.guesses.length;
-    const word = submitted?.word || (isCurrentRow ? timeGame.current : "");
+    const letters = isCurrentRow
+      ? getCurrentTimeGameLetters()
+      : Array.from(submitted?.display || "");
     const states = submitted?.states || [];
     for (let columnIndex = 0; columnIndex < TIME_GAME_WORD_LENGTH; columnIndex += 1) {
-      const cell = document.createElement("span");
+      const cell = document.createElement(isCurrentRow ? "button" : "span");
       cell.className = "time-game-cell";
+      cell.style.setProperty("--cell-index", columnIndex);
       if (states[columnIndex]) cell.dataset.state = states[columnIndex];
-      if (isCurrentRow && columnIndex === timeGame.current.length) cell.classList.add("active");
-      cell.textContent = word[columnIndex] || "";
+      if (rowIndex === timeGame.revealRow) cell.classList.add("reveal");
+      if (isCurrentRow) {
+        cell.type = "button";
+        cell.dataset.timeGameCell = String(columnIndex);
+        cell.title = `Editar letra ${columnIndex + 1}`;
+        cell.classList.add("editable");
+        if (columnIndex === timeGame.activeIndex) cell.classList.add("active");
+        if (timeGame.animation === "shake") cell.classList.add("shake");
+        if (timeGame.animation === "pop" && columnIndex === timeGame.animationIndex) cell.classList.add("pop");
+        cell.addEventListener("pointerdown", (event) => {
+          event.preventDefault();
+          selectTimeGameCell(columnIndex);
+        });
+      }
+      cell.textContent = letters[columnIndex] || "";
       board.append(cell);
     }
   }
@@ -4666,7 +4714,7 @@ function renderTimeGame() {
     actions.append(nextButton);
   }
 
-  game.append(status, board, keyboard, actions);
+  game.append(header, board, keyboard, actions);
   elements.editorEmpty.append(game);
 }
 
@@ -4696,11 +4744,7 @@ function handleTimeGameInput(key) {
     return;
   }
   if (key === "BACKSPACE") {
-    timeGame.current = timeGame.current.slice(0, -1);
-    timeGame.status = "Adivinhe a palavra de 5 letras";
-    timeGame.statusTone = "";
-    renderEditor();
-    focusTimeGameArea();
+    removeTimeGameLetter();
     return;
   }
   if (key === "ENTER") {
@@ -4708,43 +4752,128 @@ function handleTimeGameInput(key) {
     return;
   }
   const letter = normalizeTimeGameWord(key);
-  if (letter.length !== 1 || timeGame.current.length >= TIME_GAME_WORD_LENGTH) return;
-  timeGame.current += letter;
+  if (letter.length !== 1) return;
+  setTimeGameLetter(letter);
+}
+
+function getCurrentTimeGameLetters() {
+  if (!Array.isArray(timeGame.currentLetters) || timeGame.currentLetters.length !== TIME_GAME_WORD_LENGTH) {
+    const letters = Array(TIME_GAME_WORD_LENGTH).fill("");
+    normalizeTimeGameWord(timeGame.current).split("").slice(0, TIME_GAME_WORD_LENGTH).forEach((letter, index) => {
+      letters[index] = letter;
+    });
+    timeGame.currentLetters = letters;
+  }
+  return timeGame.currentLetters;
+}
+
+function syncTimeGameCurrent() {
+  timeGame.current = getCurrentTimeGameLetters().join("");
+}
+
+function selectTimeGameCell(index) {
+  timeGame.activeIndex = Math.max(0, Math.min(TIME_GAME_WORD_LENGTH - 1, Number(index) || 0));
+  timeGame.animation = "";
+  updateTimeGameActiveCell();
+  focusTimeGameArea();
+}
+
+function updateTimeGameActiveCell() {
+  elements.editorEmpty.querySelectorAll("[data-time-game-cell]").forEach((cell) => {
+    cell.classList.toggle("active", Number(cell.dataset.timeGameCell) === timeGame.activeIndex);
+    cell.classList.remove("shake", "pop");
+  });
+}
+
+function setTimeGameLetter(letter) {
+  const letters = getCurrentTimeGameLetters();
+  const index = Math.max(0, Math.min(TIME_GAME_WORD_LENGTH - 1, timeGame.activeIndex));
+  letters[index] = letter;
+  syncTimeGameCurrent();
+  timeGame.activeIndex = getNextTimeGameCellIndex(index);
   timeGame.status = "Adivinhe a palavra de 5 letras";
   timeGame.statusTone = "";
+  timeGame.animation = "pop";
+  timeGame.animationIndex = index;
+  timeGame.animationId += 1;
+  timeGame.revealRow = -1;
   renderEditor();
   focusTimeGameArea();
 }
 
+function removeTimeGameLetter() {
+  const letters = getCurrentTimeGameLetters();
+  let index = Math.max(0, Math.min(TIME_GAME_WORD_LENGTH - 1, timeGame.activeIndex));
+  if (!letters[index] && index > 0) index -= 1;
+  letters[index] = "";
+  timeGame.activeIndex = index;
+  syncTimeGameCurrent();
+  timeGame.status = "Adivinhe a palavra de 5 letras";
+  timeGame.statusTone = "";
+  timeGame.animation = "";
+  timeGame.revealRow = -1;
+  renderEditor();
+  focusTimeGameArea();
+}
+
+function getNextTimeGameCellIndex(index) {
+  const letters = getCurrentTimeGameLetters();
+  for (let next = index + 1; next < TIME_GAME_WORD_LENGTH; next += 1) {
+    if (!letters[next]) return next;
+  }
+  for (let next = 0; next < index; next += 1) {
+    if (!letters[next]) return next;
+  }
+  return Math.min(TIME_GAME_WORD_LENGTH - 1, index + 1);
+}
+
 function submitTimeGameGuess() {
-  if (timeGame.current.length < TIME_GAME_WORD_LENGTH) {
+  const letters = getCurrentTimeGameLetters();
+  const rawGuess = letters.join("");
+  if (letters.some((letter) => !letter)) {
     timeGame.status = "Faltam letras";
     timeGame.statusTone = "warning";
+    timeGame.animation = "shake";
+    timeGame.animationId += 1;
+    timeGame.revealRow = -1;
     renderEditor();
     focusTimeGameArea();
     return;
   }
-  const guess = normalizeTimeGameWord(timeGame.current);
+  const guess = normalizeTimeGameWord(rawGuess);
   if (!TIME_GAME_VALID_WORDS.has(guess)) {
     timeGame.status = "Palavra inválida";
     timeGame.statusTone = "warning";
+    timeGame.animation = "shake";
+    timeGame.animationId += 1;
+    timeGame.revealRow = -1;
     renderEditor();
     focusTimeGameArea();
     return;
   }
 
   const states = evaluateTimeGameGuess(guess, timeGame.solution);
-  timeGame.guesses.push({ word: guess, states });
+  const display = getTimeGameDisplayWord(guess);
+  const submittedRow = timeGame.guesses.length;
+  timeGame.guesses.push({ word: guess, display, states });
   mergeTimeGameKeyStates(guess, states);
   timeGame.current = "";
+  timeGame.currentLetters = Array(TIME_GAME_WORD_LENGTH).fill("");
+  timeGame.activeIndex = 0;
+  timeGame.revealRow = submittedRow;
+  timeGame.animation = "reveal";
 
   if (guess === timeGame.solution) {
     const messages = ["Fantástico", "Excelente", "Muito bom", "Boa", "Na trave", "Salvou"];
-    timeGame.status = messages[Math.min(timeGame.guesses.length - 1, messages.length - 1)];
+    const points = getTimeGameRoundPoints(timeGame.guesses.length);
+    timeGame.lastPoints = awardTimeGamePoints(points);
+    timeGame.status = getCurrentUser()
+      ? `${messages[Math.min(timeGame.guesses.length - 1, messages.length - 1)]} +${timeGame.lastPoints} pontos`
+      : `${messages[Math.min(timeGame.guesses.length - 1, messages.length - 1)]} - entre para salvar pontos`;
     timeGame.statusTone = "success";
     timeGame.ended = true;
   } else if (timeGame.guesses.length >= TIME_GAME_MAX_ATTEMPTS) {
-    timeGame.status = `A palavra era ${timeGame.solution}`;
+    timeGame.status = `A palavra era ${getTimeGameDisplayWord(timeGame.solution)}`;
     timeGame.statusTone = "warning";
     timeGame.ended = true;
   } else {
@@ -4787,6 +4916,46 @@ function mergeTimeGameKeyStates(word, states) {
       timeGame.keyStates[letter] = state;
     }
   });
+}
+
+function getTimeGameRoundPoints(attempts) {
+  return Math.max(20, (TIME_GAME_MAX_ATTEMPTS - attempts + 1) * 20);
+}
+
+function getTimeGameScore() {
+  return normalizeNumber(getCurrentUser()?.timeGameScore, 0);
+}
+
+function awardTimeGamePoints(points) {
+  const user = getCurrentUser();
+  const safePoints = normalizeNumber(points, 0);
+  if (!user || !safePoints) return 0;
+  user.timeGameScore = normalizeNumber(user.timeGameScore, 0) + safePoints;
+  user.updatedAt = Date.now();
+  saveUsers();
+  return safePoints;
+}
+
+function getTimeGameDisplayWord(normalizedWord) {
+  return TIME_GAME_WORD_DISPLAY_BY_NORMALIZED.get(normalizeTimeGameWord(normalizedWord)) || normalizeTimeGameWord(normalizedWord);
+}
+
+function buildTimeGameWordEntries(words) {
+  const byNormalized = new Map();
+  words.forEach((word) => {
+    const normalized = normalizeTimeGameWord(word);
+    if (normalized.length !== TIME_GAME_WORD_LENGTH) return;
+    const display = String(word || "").trim().toLocaleUpperCase("pt-BR");
+    const current = byNormalized.get(normalized);
+    if (!current || hasDiacritics(display)) {
+      byNormalized.set(normalized, { normalized, display });
+    }
+  });
+  return Array.from(byNormalized.values()).sort((a, b) => a.normalized.localeCompare(b.normalized, "pt-BR"));
+}
+
+function hasDiacritics(value) {
+  return String(value || "") !== removeDiacritics(value);
 }
 
 function normalizeTimeGameWord(value) {
@@ -7027,6 +7196,7 @@ function loadUsers() {
           phoneCountry: phoneParts.countryCode,
           password: typeof user.password === "string" ? user.password : "",
           photo: typeof user.photo === "string" ? user.photo : "",
+          timeGameScore: normalizeNumber(user.timeGameScore, 0),
           createdAt: Number.isFinite(user.createdAt) ? user.createdAt : Date.now(),
           updatedAt: Number.isFinite(user.updatedAt) ? user.updatedAt : Date.now(),
         };
@@ -7144,7 +7314,7 @@ function handleSignup(event) {
   }
 
   const now = Date.now();
-  const user = { id: cryptoId(), name, username, email, phone, phoneCountry, password, photo: currentSignupPhoto, createdAt: now, updatedAt: now };
+  const user = { id: cryptoId(), name, username, email, phone, phoneCountry, password, photo: currentSignupPhoto, timeGameScore: 0, createdAt: now, updatedAt: now };
   users.push(user);
   currentUserId = user.id;
   localStorage.setItem(CURRENT_USER_KEY, currentUserId);

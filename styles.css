@@ -28,7 +28,8 @@
 /* Ajustes finais mobile: Nova, editor simples, mover pasta e swipe com icone */
 @media (max-width: 680px) {
   body.mobile-screen-list,
-  body.mobile-screen-editor {
+  body.mobile-screen-editor,
+  body.mobile-screen-game {
     --mobile-topbar-height: 60px;
   }
 
@@ -61,14 +62,17 @@
 
   body.mobile-screen-list .content-grid,
   body.mobile-screen-editor .content-grid,
+  body.mobile-screen-game .content-grid,
   body.mobile-screen-list .notes-panel,
-  body.mobile-screen-editor .editor-panel {
+  body.mobile-screen-editor .editor-panel,
+  body.mobile-screen-game .editor-panel {
     height: calc(100svh - var(--mobile-topbar-height, 58px)) !important;
     max-height: calc(100svh - var(--mobile-topbar-height, 58px)) !important;
   }
 
   body.mobile-screen-list .notes-panel,
-  body.mobile-screen-editor .editor-panel {
+  body.mobile-screen-editor .editor-panel,
+  body.mobile-screen-game .editor-panel {
     overflow-y: auto !important;
     overscroll-behavior: contain !important;
     -webkit-overflow-scrolling: touch !important;
@@ -2103,6 +2107,10 @@ body.notes-selection-mode .note-card:nth-of-type(2n) {
   margin-top: 14px;
 }
 
+.mobile-time-game-button {
+  display: none;
+}
+
 .time-game-open-button:hover,
 .time-game-next-button:hover {
   transform: translateY(-1px);
@@ -2127,6 +2135,15 @@ body.notes-selection-mode .note-card:nth-of-type(2n) {
   color: var(--text);
 }
 
+.time-game-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  width: min(620px, 100%);
+}
+
 .time-game-status {
   min-height: 38px;
   border: 1px solid transparent;
@@ -2137,6 +2154,33 @@ body.notes-selection-mode .note-card:nth-of-type(2n) {
   font-size: 15px;
   font-weight: 560;
   text-align: center;
+}
+
+.time-game-score {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  transform: translateY(-50%);
+  min-width: 52px;
+  padding: 0;
+  background: transparent;
+  text-align: right;
+}
+
+.time-game-score span {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 520;
+}
+
+.time-game-score strong {
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 720;
+  line-height: 1;
 }
 
 .time-game-status[data-tone="success"] {
@@ -2171,8 +2215,14 @@ body.notes-selection-mode .note-card:nth-of-type(2n) {
   text-transform: uppercase;
 }
 
+.time-game-cell.editable {
+  cursor: pointer;
+  appearance: none;
+}
+
 .time-game-cell.active {
   border-color: color-mix(in srgb, var(--accent) 65%, var(--line));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
 .time-game-cell[data-state="correct"] {
@@ -2191,6 +2241,19 @@ body.notes-selection-mode .note-card:nth-of-type(2n) {
   border-color: var(--game-absent);
   background: var(--game-absent);
   color: color-mix(in srgb, var(--text) 72%, transparent);
+}
+
+.time-game-cell.pop {
+  animation: time-game-pop 180ms ease-out;
+}
+
+.time-game-cell.shake {
+  animation: time-game-shake 340ms ease-in-out;
+}
+
+.time-game-cell.reveal[data-state] {
+  animation: time-game-reveal 620ms cubic-bezier(.2, .7, .2, 1) both;
+  animation-delay: calc(var(--cell-index) * 90ms);
 }
 
 .time-game-keyboard {
@@ -2250,6 +2313,151 @@ body.notes-selection-mode .note-card:nth-of-type(2n) {
 
 .time-game-actions {
   min-height: 44px;
+}
+
+@media (max-width: 680px) {
+  body.mobile-screen-game .mac-toolbar,
+  body.mobile-screen-game .editor-toolbar,
+  body.mobile-screen-game .mac-toolbar [data-toolbar-key] {
+    display: none !important;
+  }
+
+  body.mobile-screen-game .editor-empty {
+    position: relative !important;
+    inset: auto !important;
+    display: grid !important;
+    min-height: 100% !important;
+    align-content: start !important;
+    padding: 4px 12px max(14px, env(safe-area-inset-bottom)) !important;
+    overflow: visible !important;
+  }
+
+  body.mobile-screen-game .time-game {
+    gap: clamp(8px, 1.7vh, 12px);
+    width: min(100%, 390px);
+  }
+
+  body.mobile-screen-game .time-game-header {
+    width: 100%;
+    min-height: 36px;
+    padding: 0 4px;
+  }
+
+  body.mobile-screen-game .time-game-status {
+    min-height: 34px;
+    padding: 6px 54px 6px 12px;
+    font-size: 13px;
+  }
+
+  body.mobile-screen-game .time-game-score {
+    right: 4px;
+    min-width: 42px;
+  }
+
+  body.mobile-screen-game .time-game-score span {
+    font-size: 10px;
+  }
+
+  body.mobile-screen-game .time-game-score strong {
+    font-size: 18px;
+  }
+
+  body.mobile-screen-game .time-game-board {
+    width: min(100%, 302px);
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  body.mobile-screen-game .time-game-cell {
+    border-radius: 6px;
+    font-size: clamp(22px, 7.6vw, 31px);
+  }
+
+  body.mobile-screen-game .time-game-keyboard {
+    width: 100%;
+    gap: 5px;
+  }
+
+  body.mobile-screen-game .time-game-key-row {
+    gap: 5px;
+  }
+
+  body.mobile-screen-game .time-game-key {
+    flex: 1 1 0;
+    min-width: 0;
+    height: clamp(42px, 10.8vw, 48px);
+    border-radius: 6px;
+    padding: 0 4px;
+    font-size: clamp(15px, 5.1vw, 20px);
+  }
+
+  body.mobile-screen-game .time-game-key.wide {
+    flex: 2.25 1 0;
+    min-width: 0;
+    font-size: 16px;
+  }
+
+  body.mobile-screen-game .time-game-key.backspace {
+    flex: 1.15 1 0;
+    min-width: 0;
+  }
+}
+
+@keyframes time-game-pop {
+  0% {
+    transform: scale(.88);
+  }
+  70% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes time-game-shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-7px);
+  }
+  40% {
+    transform: translateX(7px);
+  }
+  60% {
+    transform: translateX(-5px);
+  }
+  80% {
+    transform: translateX(5px);
+  }
+}
+
+@keyframes time-game-reveal {
+  0% {
+    transform: rotateX(0deg) scale(1);
+    filter: brightness(1);
+  }
+  48% {
+    transform: rotateX(88deg) scale(.98);
+    filter: brightness(.92);
+  }
+  52% {
+    transform: rotateX(88deg) scale(.98);
+    filter: brightness(1.08);
+  }
+  100% {
+    transform: rotateX(0deg) scale(1);
+    filter: brightness(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .time-game-cell.pop,
+  .time-game-cell.shake,
+  .time-game-cell.reveal[data-state] {
+    animation: none;
+  }
 }
 
 .empty-orb {
@@ -2658,9 +2866,13 @@ body.notes-selection-mode .note-card:nth-of-type(2n) {
   }
 
   body.mobile-screen-editor .topbar-create,
+  body.mobile-screen-game .topbar-create,
   body.mobile-screen-editor .mobile-more-button,
+  body.mobile-screen-game .mobile-more-button,
   body.mobile-screen-editor .mobile-create-label,
-  body.mobile-screen-editor .create-menu-chevron {
+  body.mobile-screen-game .mobile-create-label,
+  body.mobile-screen-editor .create-menu-chevron,
+  body.mobile-screen-game .create-menu-chevron {
     display: none !important;
   }
 
@@ -9229,8 +9441,10 @@ body.custom-cursor .draw-tool-card.dragging .draw-tool-head {
   body.mobile-screen-folders .workspace,
   body.mobile-screen-list .sidebar,
   body.mobile-screen-editor .sidebar,
+  body.mobile-screen-game .sidebar,
   body.mobile-screen-list .editor-panel,
-  body.mobile-screen-editor .notes-panel {
+  body.mobile-screen-editor .notes-panel,
+  body.mobile-screen-game .notes-panel {
     display: none !important;
   }
 
@@ -9286,7 +9500,8 @@ body.custom-cursor .draw-tool-card.dragging .draw-tool-head {
   }
 
   body.mobile-layout .nav-item > span,
-  body.mobile-layout .folder-item > span {
+  body.mobile-layout .folder-item > span,
+  body.mobile-layout .mobile-time-game-button > span {
     display: inline-flex !important;
     align-items: center !important;
     justify-content: flex-start !important;
@@ -9295,7 +9510,8 @@ body.custom-cursor .draw-tool-card.dragging .draw-tool-head {
   }
 
   body.mobile-layout .nav-item,
-  body.mobile-layout .folder-item {
+  body.mobile-layout .folder-item,
+  body.mobile-layout .mobile-time-game-button {
     min-height: 56px !important;
     border: 1px solid var(--line-soft) !important;
     border-radius: 18px !important;
@@ -9303,6 +9519,28 @@ body.custom-cursor .draw-tool-card.dragging .draw-tool-head {
     background: var(--ios-card) !important;
     color: var(--text) !important;
     font-size: 18px !important;
+  }
+
+  body.mobile-layout .mobile-time-game-button {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    margin: 0 0 10px !important;
+    font: inherit !important;
+    cursor: pointer;
+  }
+
+  body.mobile-layout .mobile-time-game-button svg {
+    width: 20px !important;
+    height: 20px !important;
+    color: var(--accent) !important;
+  }
+
+  body.mobile-layout .mobile-time-game-button strong {
+    color: var(--text-soft) !important;
+    font-size: 13px !important;
+    font-weight: 620 !important;
   }
 
   body.mobile-layout .section-title {
@@ -9477,6 +9715,8 @@ body.custom-cursor .draw-tool-card.dragging .draw-tool-head {
 
   body.mobile-screen-list .mobile-edit-button,
   body.mobile-screen-list .mobile-finish-button,
+  body.mobile-screen-game .mobile-edit-button,
+  body.mobile-screen-game .mobile-finish-button,
   body.mobile-screen-editor:not(.mobile-note-finalized) .mobile-edit-button,
   body.mobile-screen-editor:not(.mobile-note-editing) .mobile-finish-button {
     display: none !important;
@@ -9488,7 +9728,8 @@ body.custom-cursor .draw-tool-card.dragging .draw-tool-head {
   }
 
   body.mobile-screen-list .content-grid,
-  body.mobile-screen-editor .content-grid {
+  body.mobile-screen-editor .content-grid,
+  body.mobile-screen-game .content-grid {
     display: block !important;
     height: calc(100svh - 58px) !important;
     min-height: 0 !important;
@@ -9496,7 +9737,8 @@ body.custom-cursor .draw-tool-card.dragging .draw-tool-head {
   }
 
   body.mobile-screen-list .notes-panel,
-  body.mobile-screen-editor .editor-panel {
+  body.mobile-screen-editor .editor-panel,
+  body.mobile-screen-game .editor-panel {
     display: flex !important;
     height: calc(100svh - 58px) !important;
     min-height: 0 !important;
@@ -9506,7 +9748,8 @@ body.custom-cursor .draw-tool-card.dragging .draw-tool-head {
   }
 
   body.mobile-screen-editor .editor-panel,
-  body.mobile-screen-editor .editor {
+  body.mobile-screen-editor .editor,
+  body.mobile-screen-game .editor-panel {
     background: var(--editor) !important;
   }
 
@@ -9924,5 +10167,121 @@ body.custom-cursor .draw-tool-card.dragging .draw-tool-head {
     right: -84px;
     -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7h16'/%3E%3Cpath d='M6 7v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7'/%3E%3Cpath d='M9 11h6'/%3E%3C/svg%3E") center / 30px 30px no-repeat;
     mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7h16'/%3E%3Cpath d='M6 7v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7'/%3E%3Cpath d='M9 11h6'/%3E%3C/svg%3E") center / 30px 30px no-repeat;
+  }
+}
+
+/* Ajuste final da pagina mobile do jogo */
+@media (max-width: 680px) {
+  body.mobile-screen-game .mac-toolbar,
+  body.mobile-screen-game .mac-toolbar [data-toolbar-key],
+  body.mobile-screen-game .editor-toolbar,
+  body.mobile-screen-game .topbar-create,
+  body.mobile-screen-game .mobile-more-button,
+  body.mobile-screen-game .mobile-account-actions,
+  body.mobile-screen-game .mobile-create-label,
+  body.mobile-screen-game .create-menu-chevron,
+  body.mobile-screen-game .mobile-edit-button,
+  body.mobile-screen-game .mobile-finish-button {
+    display: none !important;
+  }
+
+  body.mobile-screen-game .topbar {
+    min-height: 50px !important;
+    padding: max(8px, env(safe-area-inset-top)) 14px 6px !important;
+  }
+
+  body.mobile-screen-game .content-grid,
+  body.mobile-screen-game .editor-panel {
+    height: calc(100svh - 50px) !important;
+    max-height: calc(100svh - 50px) !important;
+  }
+
+  body.mobile-screen-game .editor-panel {
+    align-items: stretch !important;
+    overflow-y: auto !important;
+  }
+
+  body.mobile-screen-game .editor-empty {
+    position: relative !important;
+    inset: auto !important;
+    display: grid !important;
+    place-items: start center !important;
+    width: 100% !important;
+    min-height: 100% !important;
+    padding: 4px 12px max(18px, env(safe-area-inset-bottom)) !important;
+    overflow: visible !important;
+  }
+
+  body.mobile-screen-game .time-game {
+    width: min(100%, 372px) !important;
+    gap: clamp(8px, 1.45vh, 12px) !important;
+  }
+
+  body.mobile-screen-game .time-game-header {
+    width: 100% !important;
+    min-height: 34px !important;
+    padding: 0 2px !important;
+  }
+
+  body.mobile-screen-game .time-game-status {
+    width: 100% !important;
+    min-height: 30px !important;
+    padding: 4px 68px 4px 68px !important;
+    font-size: clamp(12px, 3.7vw, 14px) !important;
+    line-height: 1.15 !important;
+  }
+
+  body.mobile-screen-game .time-game-score {
+    right: 2px !important;
+    min-width: 50px !important;
+  }
+
+  body.mobile-screen-game .time-game-score span {
+    font-size: 10px !important;
+  }
+
+  body.mobile-screen-game .time-game-score strong {
+    font-size: 19px !important;
+  }
+
+  body.mobile-screen-game .time-game-board {
+    width: min(100%, 292px) !important;
+    gap: 5px !important;
+  }
+
+  body.mobile-screen-game .time-game-cell {
+    border-radius: 7px !important;
+    font-size: clamp(22px, 7.2vw, 30px) !important;
+  }
+
+  body.mobile-screen-game .time-game-keyboard {
+    width: min(100%, 372px) !important;
+    gap: 5px !important;
+  }
+
+  body.mobile-screen-game .time-game-key-row {
+    gap: 5px !important;
+  }
+
+  body.mobile-screen-game .time-game-key {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    height: clamp(38px, 10.1vw, 45px) !important;
+    border-radius: 7px !important;
+    padding: 0 3px !important;
+    font-size: clamp(15px, 4.9vw, 19px) !important;
+  }
+
+  body.mobile-screen-game .time-game-key.wide {
+    flex: 2.25 1 0 !important;
+    font-size: clamp(12px, 4vw, 16px) !important;
+  }
+
+  body.mobile-screen-game .time-game-key.backspace {
+    flex: 1.15 1 0 !important;
+  }
+
+  body.mobile-layout .mobile-time-game-button strong {
+    display: none !important;
   }
 }
