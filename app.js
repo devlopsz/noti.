@@ -29,6 +29,38 @@ const FOLDER_COLORS = ACCENT_COLORS.slice();
 const TEXT_FORMAT_COLORS = ["#ff2d55", "#ff3b30", "#ff9500", "#b98500", "#34c759", "#64d2ff", "#007aff", "#5856d6", "#af52de", "#8e8e93", "#000000", "#ffffff"];
 const TEXT_SIZE_OPTIONS = [14, 16, 18, 22, 28, 34];
 const DEFAULT_DRAWING_TOOL = { mode: "pen", color: "#b98500", width: 6, context: "page", blockId: "" };
+const TIME_GAME_WORD_LENGTH = 5;
+const TIME_GAME_MAX_ATTEMPTS = 6;
+const TIME_GAME_KEY_ROWS = [
+  ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
+  ["A", "S", "D", "F", "G", "H", "J", "K", "L", "BACKSPACE"],
+  ["Z", "X", "C", "V", "B", "N", "M", "ENTER"],
+];
+const TIME_GAME_BASE_WORDS = [
+  "abaco", "abril", "abrir", "acaso", "acido", "adeus", "adubo", "agora", "agudo", "ainda", "album", "algum", "altar", "amado", "amigo", "andar", "anexo", "antes", "areia", "arroz", "astro", "atual",
+  "baixo", "banal", "banco", "banho", "barco", "beijo", "bicho", "bolsa", "brasa", "bravo", "breve", "brisa", "bruto", "burro", "busca",
+  "caixa", "caldo", "calma", "campo", "canal", "canto", "cargo", "carne", "carro", "carta", "casal", "casar", "causa", "cedro", "censo", "certo", "chave", "cheio", "chuva", "claro", "clube", "cobra", "cofre", "coisa", "corte", "couro", "cravo", "creme", "culpa", "curso",
+  "dados", "dança", "deixa", "denso", "dente", "desde", "disco", "doido", "drama", "duplo", "duque",
+  "elite", "entre", "envio", "erros", "etapa", "exato",
+  "facil", "falar", "falta", "fardo", "farol", "festa", "filme", "final", "firme", "fixar", "folga", "folha", "fonte", "forma", "forte", "frase", "fruta", "fundo",
+  "ganho", "garfo", "gasto", "gente", "gesto", "girar", "globo", "golpe", "gosto", "grade", "grupo", "guia",
+  "honra", "hotel", "humor",
+  "idade", "igual", "ileso", "impar", "jogar", "junto", "justo",
+  "lapis", "largo", "leite", "lento", "letra", "limao", "limpo", "lindo", "linha", "livro", "local", "longe", "lugar",
+  "maior", "manga", "marca", "marco", "marte", "massa", "medir", "menos", "mente", "mesma", "mesmo", "metro", "misto", "moral", "morro", "morte", "mudar", "mundo", "museu",
+  "nadar", "nasal", "navio", "negro", "nobre", "noite", "norte", "notas", "nuvem",
+  "obras", "odiar", "olhar", "ontem", "opção", "ordem", "orgão", "ossos", "outro", "ouvir",
+  "pagar", "papel", "parar", "parte", "passo", "pasta", "pedra", "peixe", "perto", "pesar", "piano", "pilar", "pinto", "pista", "plano", "pleno", "poder", "poema", "ponto", "porco", "porta", "pouco", "praia", "preto", "prova", "pular",
+  "quase", "queda", "quero", "quilo",
+  "raiva", "razao", "regra", "reino", "relva", "renda", "resto", "ritmo", "risco", "rosto", "roupa",
+  "sabor", "salto", "santo", "saude", "secar", "selar", "senso", "sinal", "sobre", "sonho", "sorte", "subir", "sutil",
+  "tarde", "tenso", "tempo", "termo", "terra", "texto", "tigre", "tocar", "todos", "tomar", "torre", "trago", "trama", "trevo", "troca", "turma",
+  "unico", "uniao", "urgir", "usual",
+  "valor", "vapor", "vazio", "velho", "vento", "verde", "verbo", "vidro", "vinho", "viral", "vista", "viver", "volta",
+  "zebra", "zerar",
+];
+const TIME_GAME_WORDS = Array.from(new Set(TIME_GAME_BASE_WORDS.map((word) => normalizeTimeGameWord(word)).filter((word) => word.length === TIME_GAME_WORD_LENGTH))).sort();
+const TIME_GAME_VALID_WORDS = new Set(TIME_GAME_WORDS);
 const AUTOCORRECT_WORDS = new Map(Object.entries({
   acao: "ação",
   acoes: "ações",
@@ -36,6 +68,11 @@ const AUTOCORRECT_WORDS = new Map(Object.entries({
   alem: "além",
   aniversario: "aniversário",
   anuncios: "anúncios",
+  administracao: "administração",
+  analise: "análise",
+  analises: "análises",
+  aplicacao: "aplicação",
+  aplicacoes: "aplicações",
   apos: "após",
   aquivo: "arquivo",
   arquivoo: "arquivo",
@@ -50,17 +87,43 @@ const AUTOCORRECT_WORDS = new Map(Object.entries({
   calendario: "calendário",
   categoria: "categoria",
   celula: "célula",
+  ciencia: "ciência",
+  codigo: "código",
+  codigos: "códigos",
+  competicao: "competição",
+  competicoes: "competições",
+  conclusao: "conclusão",
+  conexao: "conexão",
+  conexoes: "conexões",
+  consciencia: "consciência",
+  consequencia: "consequência",
+  consequencias: "consequências",
+  construcao: "construção",
+  construcoes: "construções",
+  constituicao: "constituição",
   conteudo: "conteúdo",
   conteudos: "conteúdos",
   configuracao: "configuração",
   configuracoes: "configurações",
   concerteza: "com certeza",
+  coracao: "coração",
+  coracoes: "corações",
+  correcao: "correção",
+  correcoes: "correções",
   criacao: "criação",
   derrepente: "de repente",
   denovo: "de novo",
   dificil: "difícil",
+  direcao: "direção",
+  direcoes: "direções",
+  documentacao: "documentação",
+  dromedario: "dromedário",
+  dromedarios: "dromedários",
   edicao: "edição",
+  educacao: "educação",
   entao: "então",
+  experiencia: "experiência",
+  experiencias: "experiências",
   estatistica: "estatística",
   estatisticas: "estatísticas",
   excluir: "excluir",
@@ -68,42 +131,125 @@ const AUTOCORRECT_WORDS = new Map(Object.entries({
   faser: "fazer",
   fas: "faz",
   finalizacao: "finalização",
+  fisica: "física",
+  formulario: "formulário",
+  formularios: "formulários",
+  frequencia: "frequência",
+  frequencias: "frequências",
   funcao: "função",
   funcoes: "funções",
+  familia: "família",
+  familias: "famílias",
+  genetica: "genética",
+  graficos: "gráficos",
+  grafico: "gráfico",
   historico: "histórico",
+  historia: "história",
+  historias: "histórias",
+  horario: "horário",
+  horarios: "horários",
+  importancia: "importância",
+  informacao: "informação",
+  informacoes: "informações",
+  inteligencia: "inteligência",
   inicio: "início",
   ja: "já",
   la: "lá",
+  laboratorio: "laboratório",
+  laboratorios: "laboratórios",
+  lingua: "língua",
+  logico: "lógico",
+  magico: "mágico",
+  matematica: "matemática",
+  memoria: "memória",
+  memorias: "memórias",
+  maquina: "máquina",
+  maquinas: "máquinas",
   lixeira: "lixeira",
   midia: "mídia",
   midias: "mídias",
   necessario: "necessário",
+  necessaria: "necessária",
+  necessarias: "necessárias",
+  necessarios: "necessários",
   nao: "não",
   notificacao: "notificação",
   notificacoes: "notificações",
+  numero: "número",
+  numeros: "números",
+  observacao: "observação",
+  observacoes: "observações",
   opcao: "opção",
   opcoes: "opções",
+  opiniao: "opinião",
+  opinioes: "opiniões",
+  orgao: "órgão",
+  orgaos: "órgãos",
   organizacao: "organização",
+  periodo: "período",
+  periodos: "períodos",
   personalizacao: "personalização",
   possivel: "possível",
+  producao: "produção",
+  producoes: "produções",
+  protecao: "proteção",
+  portugues: "português",
   proximo: "próximo",
   proximos: "próximos",
+  publico: "público",
+  publica: "pública",
+  publicos: "públicos",
+  publicas: "públicas",
+  quimica: "química",
   rapida: "rápida",
   rapido: "rápido",
+  razao: "razão",
+  regioes: "regiões",
+  regiao: "região",
   recuperacao: "recuperação",
+  referencia: "referência",
+  referencias: "referências",
+  relatorio: "relatório",
+  relatorios: "relatórios",
+  reuniao: "reunião",
+  reunioes: "reuniões",
   restauracao: "restauração",
+  saude: "saúde",
+  secao: "seção",
+  secoes: "seções",
+  selecao: "seleção",
+  selecoes: "seleções",
+  sequencia: "sequência",
+  sequencias: "sequências",
   seria: "seria",
   serio: "sério",
+  situacao: "situação",
+  situacoes: "situações",
+  solucao: "solução",
+  solucoes: "soluções",
   so: "só",
   tambem: "também",
+  traducao: "tradução",
+  traducoes: "traduções",
+  transferencia: "transferência",
+  transferencias: "transferências",
+  unico: "único",
+  unica: "única",
+  unicos: "únicos",
+  unicas: "únicas",
   usuario: "usuário",
   usuarios: "usuários",
+  util: "útil",
+  uteis: "úteis",
   ultima: "última",
   ultimas: "últimas",
   ultimo: "último",
   ultimos: "últimos",
+  versao: "versão",
+  versoes: "versões",
   video: "vídeo",
   videos: "vídeos",
+  visao: "visão",
   voce: "você",
   voces: "vocês",
 }));
@@ -170,7 +316,7 @@ let preferences = loadPreferences();
 let currentSignupPhoto = "";
 let pendingProfilePhoto = "";
 let currentView = "all";
-let selectedNoteId = state.notes.find((note) => !note.trashed && !note.archived)?.id ?? null;
+let selectedNoteId = null;
 let draggedNoteId = null;
 let toastTimer = null;
 let tooltipObserver = null;
@@ -218,6 +364,9 @@ let mobileNotePointer = null;
 let noteHighlightTargetId = "";
 let noteCardDensityRaf = 0;
 let isApplyingAutocorrect = false;
+let noteSelectionMode = false;
+const selectedNoteIds = new Set();
+let timeGame = createTimeGameState({ active: false });
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -288,6 +437,7 @@ const elements = {
   formatSizeValue: $("#formatSizeValue"),
   formatSizeMenu: $("#formatSizeMenu"),
   textFormatMenu: $("#textFormatMenu"),
+  textFormatAlignSection: $("#textFormatAlignSection"),
   textFormatSizeOptions: $("#textFormatSizeOptions"),
   textFormatColorMenu: $("#textFormatColorMenu"),
   textFormatColorTitle: $("#textFormatColorTitle"),
@@ -573,6 +723,7 @@ function bindEvents() {
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      const hadModalOpen = elements.modalLayer && !elements.modalLayer.hidden;
       closeToolbarContextMenu();
       closeBlockContextMenu();
       closeSiteContextMenu();
@@ -582,6 +733,12 @@ function bindEvents() {
       closeCreateTypeModal();
       closeDrawingTool();
       closeModals();
+      if (!hadModalOpen) closeDesktopEditorToGreeting();
+      return;
+    }
+
+    if (timeGame.active && !selectedNoteId && !isMobileLayout() && !isNativeEditableTarget(event.target)) {
+      handleTimeGameKeydown(event);
     }
   });
 
@@ -749,6 +906,7 @@ function updateMobileLayoutState() {
   document.body.classList.toggle("mobile-note-finalized", mobile && mobileScreen === "editor" && Boolean(getSelectedNote()?.finalized));
   document.body.classList.toggle("mobile-note-trash", mobile && mobileScreen === "editor" && Boolean(getSelectedNote()?.trashed));
   document.body.classList.toggle("mobile-settings-page", mobile && elements.settingsModal && !elements.settingsModal.hidden);
+  document.body.classList.toggle("notes-selection-mode", noteSelectionMode);
   placeTextFormatToolbar();
 
   if (!mobile) {
@@ -1096,7 +1254,7 @@ function renderNotes() {
   const selectedStillVisible = visibleNotes.some((note) => note.id === selectedNoteId);
 
   if (!selectedStillVisible) {
-    selectedNoteId = visibleNotes[0]?.id ?? null;
+    selectedNoteId = shouldAutoSelectVisibleNote() ? visibleNotes[0]?.id ?? null : null;
   }
 
   elements.notesList.replaceChildren();
@@ -1127,6 +1285,7 @@ function renderNotes() {
     card.dataset.tooltip = noteTitle;
     card.title = noteTitle;
     card.classList.toggle("active", note.id === selectedNoteId);
+    card.classList.toggle("selected", selectedNoteIds.has(note.id));
     const complete = isChecklistComplete(note);
     const highlightColor = normalizeOptionalAccent(note.highlightColor);
     card.classList.toggle("note-highlighted", Boolean(highlightColor));
@@ -1151,6 +1310,10 @@ function renderNotes() {
         mobileNotePointer = null;
         return;
       }
+      if (noteSelectionMode) {
+        toggleNoteSelection(note.id);
+        return;
+      }
       selectedNoteId = note.id;
       if (isMobileLayout()) showMobileScreen("editor");
       renderNotes();
@@ -1160,6 +1323,10 @@ function renderNotes() {
     bindMobileNoteGestures(card, note);
 
     card.addEventListener("dragstart", (event) => {
+      if (noteSelectionMode) {
+        event.preventDefault();
+        return;
+      }
       draggedNoteId = note.id;
       card.classList.add("dragging");
       event.dataTransfer.effectAllowed = "move";
@@ -1216,6 +1383,7 @@ function bindMobileNoteGestures(card, note) {
       startY: event.clientY,
       currentX: event.clientX,
       handled: false,
+      selectionMode: noteSelectionMode,
       card,
     };
     mobileNotePressTimer = window.setTimeout(() => {
@@ -1237,6 +1405,7 @@ function bindMobileNoteGestures(card, note) {
       return;
     }
     if (Math.abs(dx) > 10) clearTimeout(mobileNotePressTimer);
+    if (mobileNotePointer.selectionMode) return;
     if (Math.abs(dx) > 6) {
       card.classList.add("swiping");
       card.style.transform = `translateX(${Math.max(-86, Math.min(86, dx))}px)`;
@@ -1252,6 +1421,7 @@ function bindMobileNoteGestures(card, note) {
     resetMobileSwipeCard(card);
     mobileNotePointer.handled = handledByMenu || Math.abs(dx) > 78;
     if (handledByMenu) return;
+    if (mobileNotePointer.selectionMode) return;
     if (dx > 78) {
       pinNoteById(note.id, true);
       return;
@@ -1274,22 +1444,74 @@ function resetMobileSwipeCard(card) {
   delete card.dataset.swipeAction;
 }
 
+function enterNoteSelectionMode(noteId = "") {
+  noteSelectionMode = true;
+  if (noteId) selectedNoteIds.add(noteId);
+  updateMobileLayoutState();
+  renderNotes();
+  showToast("Modo seleção ativado");
+}
+
+function exitNoteSelectionMode(options = {}) {
+  noteSelectionMode = false;
+  selectedNoteIds.clear();
+  closeMobileNoteActionMenu();
+  if (options.render !== false) {
+    updateMobileLayoutState();
+    renderNotes();
+  }
+}
+
+function toggleNoteSelection(noteId) {
+  if (!noteId) return;
+  if (selectedNoteIds.has(noteId)) selectedNoteIds.delete(noteId);
+  else selectedNoteIds.add(noteId);
+  if (!selectedNoteIds.size) {
+    exitNoteSelectionMode();
+    return;
+  }
+  renderNotes();
+}
+
+function ensureNoteSelectedForMenu(noteId) {
+  if (!noteSelectionMode || !noteId) return;
+  selectedNoteIds.add(noteId);
+}
+
+function getContextNoteIds(fallbackId = mobileNoteMenuTargetId) {
+  const source = noteSelectionMode && selectedNoteIds.size ? Array.from(selectedNoteIds) : [fallbackId];
+  const valid = new Set(state.notes.map((note) => note.id));
+  return source.filter((id, index, array) => id && valid.has(id) && array.indexOf(id) === index);
+}
+
+function getContextNotes(fallbackId = mobileNoteMenuTargetId) {
+  const ids = getContextNoteIds(fallbackId);
+  return ids.map((id) => state.notes.find((note) => note.id === id)).filter(Boolean);
+}
+
 function showMobileNoteActionMenu(noteId, card, point = null) {
   closeMobileFolderMoveMenu();
   closeNoteHighlightMenu();
   closeSiteContextMenu();
   mobileNoteMenuTargetId = noteId;
+  ensureNoteSelectedForMenu(noteId);
   const note = state.notes.find((candidate) => candidate.id === noteId);
   if (!note) return;
-  elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="restore"]').hidden = !note.trashed;
-  elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="pin"]').hidden = note.trashed;
-  elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="highlight"]').hidden = note.trashed;
-  elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="archive"]').hidden = note.trashed;
-  elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="move"]').hidden = note.trashed;
-  elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="edit"]').hidden = note.trashed;
-  elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="delete"]').hidden = note.trashed;
-  elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="pin"] span').textContent = note.pinned ? "Desafixar" : "Fixar";
-  elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="highlight"] span').textContent = note.highlightColor ? "Alterar destaque" : "Destacar";
+  const notes = getContextNotes(noteId);
+  const count = notes.length || 1;
+  const hasTrashed = notes.some((item) => item.trashed);
+  const allTrashed = notes.length > 0 && notes.every((item) => item.trashed);
+  const allPinned = notes.length > 0 && notes.every((item) => item.pinned);
+  elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="restore"]').hidden = !allTrashed;
+  elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="pin"]').hidden = hasTrashed;
+  elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="highlight"]').hidden = hasTrashed;
+  elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="archive"]').hidden = hasTrashed;
+  elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="move"]').hidden = hasTrashed;
+  elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="edit"]').hidden = hasTrashed || count > 1;
+  elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="delete"]').hidden = allTrashed;
+  elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="pin"] span').textContent = allPinned ? "Desafixar" : "Fixar";
+  elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="highlight"] span').textContent = notes.some((item) => item.highlightColor) ? "Alterar destaque" : "Destacar";
+  elements.mobileNoteActionMenu.querySelector('[data-mobile-note-action="select"] span').textContent = noteSelectionMode ? `Sair da seleção (${count})` : "Selecionar";
   elements.mobileNoteActionMenu.hidden = false;
   elements.mobileNoteActionMenu.style.left = "0px";
   elements.mobileNoteActionMenu.style.top = "0px";
@@ -1312,7 +1534,13 @@ function handleMobileNoteMenuClick(event) {
   const action = event.target.closest("[data-mobile-note-action]")?.dataset.mobileNoteAction;
   if (!action || !mobileNoteMenuTargetId) return;
   const noteId = mobileNoteMenuTargetId;
+  const noteIds = getContextNoteIds(noteId);
   closeMobileNoteActionMenu();
+  if (action === "select") {
+    if (noteSelectionMode) exitNoteSelectionMode();
+    else enterNoteSelectionMode(noteId);
+    return;
+  }
   if (action === "move") {
     showMobileFolderMoveMenu(noteId);
     return;
@@ -1321,10 +1549,13 @@ function handleMobileNoteMenuClick(event) {
     showNoteHighlightMenu(noteId);
     return;
   }
-  if (action === "pin") pinNoteById(noteId);
-  if (action === "archive") archiveNoteById(noteId);
-  if (action === "delete") deleteNoteById(noteId);
-  if (action === "restore") restoreNoteById(noteId);
+  if (action === "pin") pinNotesByIds(noteIds);
+  if (action === "archive") archiveNotesByIds(noteIds);
+  if (action === "delete") deleteNotesByIds(noteIds);
+  if (action === "restore") restoreNotesByIds(noteIds);
+  if (action === "save") saveNotesAsText(noteIds);
+  if (action === "copy") copyNotesToClipboard(noteIds);
+  if (action === "transfer") downloadNotesTransfer(noteIds);
   if (action === "edit") {
     const note = state.notes.find((candidate) => candidate.id === noteId);
     if (!note) return;
@@ -1338,12 +1569,13 @@ function handleMobileNoteMenuClick(event) {
 }
 
 function showNoteHighlightMenu(noteId) {
-  const note = state.notes.find((candidate) => candidate.id === noteId);
-  if (!note || note.trashed || !elements.noteHighlightMenu || !elements.noteHighlightColors) return;
+  const notes = getContextNotes(noteId);
+  const note = notes[0];
+  if (!note || notes.some((item) => item.trashed) || !elements.noteHighlightMenu || !elements.noteHighlightColors) return;
   closeMobileFolderMoveMenu();
   closeSiteContextMenu();
   noteHighlightTargetId = noteId;
-  const currentHighlight = normalizeOptionalAccent(note.highlightColor);
+  const currentHighlight = normalizeOptionalAccent(notes.find((item) => normalizeOptionalAccent(item.highlightColor))?.highlightColor);
   renderColorButtons(elements.noteHighlightColors, ACCENT_COLORS, currentHighlight || preferences.accent, (color) => setNoteHighlightColor(noteId, color));
   if (!currentHighlight) {
     elements.noteHighlightColors.querySelectorAll(".color-swatch.active").forEach((button) => button.classList.remove("active"));
@@ -1377,20 +1609,23 @@ function handleNoteHighlightMenuClick(event) {
 }
 
 function setNoteHighlightColor(noteId, color) {
-  const note = state.notes.find((candidate) => candidate.id === noteId);
-  if (!note || note.trashed) return;
-  note.highlightColor = normalizeOptionalAccent(color);
-  note.updatedAt = Date.now();
+  const notes = getContextNotes(noteId).filter((note) => !note.trashed);
+  if (!notes.length) return;
+  const nextColor = normalizeOptionalAccent(color);
+  notes.forEach((note) => {
+    note.highlightColor = nextColor;
+    note.updatedAt = Date.now();
+  });
   saveState();
   closeNoteHighlightMenu();
   renderNotes();
-  showToast(note.highlightColor ? "Nota destacada" : "Destaque removido");
+  showToast(nextColor ? `${notes.length} ${notes.length === 1 ? "nota destacada" : "notas destacadas"}` : "Destaque removido");
 }
 
 function showMobileFolderMoveMenu(noteId) {
-  if (!isMobileLayout()) return;
-  const note = state.notes.find((candidate) => candidate.id === noteId);
-  if (!note || note.trashed) return;
+  const notes = getContextNotes(noteId);
+  const note = notes[0];
+  if (!note || notes.some((item) => item.trashed)) return;
   mobileNoteMenuTargetId = noteId;
   elements.mobileFolderMoveMenu.replaceChildren();
 
@@ -1410,8 +1645,16 @@ function showMobileFolderMoveMenu(noteId) {
   });
 
   elements.mobileFolderMoveMenu.hidden = false;
-  elements.mobileFolderMoveMenu.style.top = "128px";
-  elements.mobileFolderMoveMenu.style.right = "12px";
+  elements.mobileFolderMoveMenu.style.left = "0px";
+  elements.mobileFolderMoveMenu.style.top = "0px";
+  elements.mobileFolderMoveMenu.style.right = "auto";
+  const source = document.querySelector(`.note-card[data-note-id="${CSS.escape(noteId)}"]`);
+  const rect = source?.getBoundingClientRect?.();
+  const bounds = elements.mobileFolderMoveMenu.getBoundingClientRect();
+  const left = (rect?.left || 18) + 18;
+  const top = (rect?.top || 110) + 18;
+  elements.mobileFolderMoveMenu.style.left = `${Math.max(12, Math.min(window.innerWidth - bounds.width - 12, left))}px`;
+  elements.mobileFolderMoveMenu.style.top = `${Math.max(12, Math.min(window.innerHeight - bounds.height - 12, top))}px`;
 }
 
 function closeMobileFolderMoveMenu() {
@@ -1423,7 +1666,7 @@ function handleMobileFolderMoveMenuClick(event) {
   event.stopPropagation();
   const button = event.target.closest("[data-mobile-folder-id]");
   if (!button || !mobileNoteMenuTargetId) return;
-  moveNoteToFolderById(mobileNoteMenuTargetId, button.dataset.mobileFolderId || "");
+  moveNotesToFolderByIds(getContextNoteIds(mobileNoteMenuTargetId), button.dataset.mobileFolderId || "");
   closeMobileFolderMoveMenu();
   closeMobileNoteActionMenu();
 }
@@ -1492,65 +1735,114 @@ function handleSiteContextMenuClick(event) {
   if (action === "new-note") createNote("note");
 }
 
-function moveNoteToFolderById(noteId, folderId) {
-  const note = state.notes.find((candidate) => candidate.id === noteId);
-  if (!note || note.trashed) return;
-  note.folderId = folderId;
-  note.updatedAt = Date.now();
-  selectedNoteId = note.id;
+function getNotesByIds(noteIds, options = {}) {
+  const ids = Array.isArray(noteIds) ? noteIds : [noteIds];
+  const uniqueIds = ids.filter((id, index, array) => id && array.indexOf(id) === index);
+  return uniqueIds
+    .map((id) => state.notes.find((candidate) => candidate.id === id))
+    .filter((note) => note && (options.includeTrashed || !note.trashed));
+}
+
+function finishBatchNoteAction(message, options = {}) {
+  if (options.clearSelection !== false) {
+    noteSelectionMode = false;
+    selectedNoteIds.clear();
+  }
+  closeMobileNoteActionMenu();
+  closeMobileFolderMoveMenu();
+  closeNoteHighlightMenu();
   saveState();
   render();
-  showToast(folderId ? "Nota movida para a pasta" : "Nota removida da pasta");
+  if (message) showToast(message);
+}
+
+function moveNotesToFolderByIds(noteIds, folderId) {
+  const notes = getNotesByIds(noteIds);
+  if (!notes.length) return;
+  const now = Date.now();
+  notes.forEach((note) => {
+    note.folderId = folderId;
+    note.updatedAt = now;
+  });
+  selectedNoteId = notes[0].id;
+  finishBatchNoteAction(notes.length === 1 ? (folderId ? "Nota movida para a pasta" : "Nota removida da pasta") : `${notes.length} notas movidas`);
+}
+
+function moveNoteToFolderById(noteId, folderId) {
+  moveNotesToFolderByIds([noteId], folderId);
+}
+
+function pinNotesByIds(noteIds, forcePinned = null) {
+  const notes = getNotesByIds(noteIds);
+  if (!notes.length) return;
+  const nextPinned = forcePinned === null ? notes.some((note) => !note.pinned) : Boolean(forcePinned);
+  const now = Date.now();
+  notes.forEach((note) => {
+    note.pinned = nextPinned;
+    note.updatedAt = now;
+  });
+  selectedNoteId = notes[0].id;
+  finishBatchNoteAction(nextPinned ? (notes.length === 1 ? "Nota fixada" : `${notes.length} notas fixadas`) : (notes.length === 1 ? "Nota desafixada" : `${notes.length} notas desafixadas`));
 }
 
 function pinNoteById(noteId, forcePinned = null) {
-  const note = state.notes.find((candidate) => candidate.id === noteId);
-  if (!note || note.trashed) return;
-  note.pinned = forcePinned === null ? !note.pinned : Boolean(forcePinned);
-  note.updatedAt = Date.now();
-  selectedNoteId = note.id;
-  saveState();
-  render();
-  showToast(note.pinned ? "Nota fixada" : "Nota desafixada");
+  pinNotesByIds([noteId], forcePinned);
+}
+
+function archiveNotesByIds(noteIds) {
+  const notes = getNotesByIds(noteIds);
+  if (!notes.length) return;
+  const ids = new Set(notes.map((note) => note.id));
+  const now = Date.now();
+  notes.forEach((note) => {
+    note.archived = true;
+    note.pinned = false;
+    note.updatedAt = now;
+  });
+  if (ids.has(selectedNoteId)) selectedNoteId = getVisibleNotes().find((item) => !ids.has(item.id))?.id ?? null;
+  finishBatchNoteAction(notes.length === 1 ? "Nota arquivada" : `${notes.length} notas arquivadas`);
 }
 
 function archiveNoteById(noteId) {
-  const note = state.notes.find((candidate) => candidate.id === noteId);
-  if (!note || note.trashed) return;
-  note.archived = true;
-  note.pinned = false;
-  note.updatedAt = Date.now();
-  if (selectedNoteId === note.id) selectedNoteId = getVisibleNotes().find((item) => item.id !== note.id)?.id ?? null;
-  saveState();
-  render();
-  showToast("Nota arquivada");
+  archiveNotesByIds([noteId]);
+}
+
+function deleteNotesByIds(noteIds) {
+  const notes = getNotesByIds(noteIds, { includeTrashed: true });
+  if (!notes.length) return;
+  const ids = new Set(notes.map((note) => note.id));
+  const now = Date.now();
+  notes.forEach((note) => {
+    note.trashed = true;
+    note.archived = false;
+    note.pinned = false;
+    note.updatedAt = now;
+  });
+  if (ids.has(selectedNoteId)) selectedNoteId = getVisibleNotes().find((item) => !ids.has(item.id))?.id ?? null;
+  finishBatchNoteAction(notes.length === 1 ? "Nota movida para a lixeira" : `${notes.length} notas movidas para a lixeira`);
 }
 
 function deleteNoteById(noteId) {
-  const note = state.notes.find((candidate) => candidate.id === noteId);
-  if (!note) return;
-  note.trashed = true;
-  note.archived = false;
-  note.pinned = false;
-  note.updatedAt = Date.now();
-  if (selectedNoteId === note.id) selectedNoteId = getVisibleNotes().find((item) => item.id !== note.id)?.id ?? null;
-  saveState();
-  render();
-  showToast("Nota movida para a lixeira");
+  deleteNotesByIds([noteId]);
+}
+
+function restoreNotesByIds(noteIds) {
+  const notes = getNotesByIds(noteIds, { includeTrashed: true });
+  if (!notes.length) return;
+  const now = Date.now();
+  notes.forEach((note) => {
+    note.trashed = false;
+    note.archived = false;
+    note.updatedAt = now;
+  });
+  currentView = "all";
+  selectedNoteId = notes[0].id;
+  showMobileScreen("list");
+  finishBatchNoteAction(notes.length === 1 ? "Nota restaurada" : `${notes.length} notas restauradas`);
 }
 
 function restoreNoteById(noteId) {
-  const note = state.notes.find((candidate) => candidate.id === noteId);
-  if (!note) return;
-  note.trashed = false;
-  note.archived = false;
-  note.updatedAt = Date.now();
-  currentView = "all";
-  selectedNoteId = note.id;
-  saveState();
-  showMobileScreen("list");
-  render();
-  showToast("Nota restaurada");
+  restoreNotesByIds([noteId]);
 }
 
 function renderEditor() {
@@ -1561,6 +1853,7 @@ function renderEditor() {
   elements.editorEmpty.hidden = hasNote;
 
   if (!note) {
+    renderEditorEmptyGreeting();
     closeDrawingTool();
     queueMobileTopbarHeightUpdate();
     return;
@@ -3231,9 +3524,34 @@ function correctAutocorrectText(text, caretIndex = 0) {
 
 function getAutocorrectReplacement(word) {
   const key = removeDiacritics(word).toLocaleLowerCase("pt-BR");
-  const replacement = AUTOCORRECT_WORDS.get(key) || getCustomAutocorrectReplacement(word, key);
+  const replacement = AUTOCORRECT_WORDS.get(key)
+    || getBuiltInAutocorrectReplacement(key)
+    || getCustomAutocorrectReplacement(word, key);
   if (!replacement) return "";
   return matchAutocorrectCase(word, replacement);
+}
+
+function getBuiltInAutocorrectReplacement(key) {
+  if (!key || isProtectedPortugueseWord(key)) return "";
+  const compactWord = key.replace(/[^a-z0-9]/g, "");
+  if (compactWord.length < 7) return "";
+
+  let best = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  AUTOCORRECT_WORDS.forEach((replacement, sourceKey) => {
+    if (!replacement || replacement === sourceKey) return;
+    const compactKey = String(sourceKey || "").replace(/[^a-z0-9]/g, "");
+    if (compactKey.length < 7) return;
+    const limit = getAutocorrectDistanceLimit(compactWord, compactKey);
+    if (Math.abs(compactKey.length - compactWord.length) > limit) return;
+    const distance = getEditDistanceWithinLimit(compactWord, compactKey, limit);
+    if (distance <= limit && distance < bestDistance) {
+      best = replacement;
+      bestDistance = distance;
+    }
+  });
+
+  return best || "";
 }
 
 function getCustomAutocorrectReplacement(word, key = removeDiacritics(word).toLocaleLowerCase("pt-BR")) {
@@ -3247,11 +3565,18 @@ function getCustomAutocorrectReplacement(word, key = removeDiacritics(word).toLo
   if (compactWord.length < 3) return "";
   const match = customWords.find((customWord) => {
     const customKey = normalizeCustomAutocorrectKey(customWord).replace(/[^a-z0-9]/g, "");
+    const limit = getAutocorrectDistanceLimit(compactWord, customKey);
     return customKey.length >= 3
-      && Math.abs(customKey.length - compactWord.length) <= 1
-      && getEditDistanceWithinLimit(compactWord, customKey, 1) <= 1;
+      && Math.abs(customKey.length - compactWord.length) <= limit
+      && getEditDistanceWithinLimit(compactWord, customKey, limit) <= limit;
   });
   return match && match !== word ? match : "";
+}
+
+function getAutocorrectDistanceLimit(source, target) {
+  const length = Math.min(String(source || "").length, String(target || "").length);
+  if (length >= 9) return 2;
+  return 1;
 }
 
 function isProtectedPortugueseWord(key) {
@@ -3487,8 +3812,12 @@ function getSelectedNote() {
 function ensureSelection() {
   const visibleNotes = getVisibleNotes();
   if (!visibleNotes.some((note) => note.id === selectedNoteId)) {
-    selectedNoteId = visibleNotes[0]?.id ?? null;
+    selectedNoteId = shouldAutoSelectVisibleNote() ? visibleNotes[0]?.id ?? null : null;
   }
+}
+
+function shouldAutoSelectVisibleNote() {
+  return isMobileLayout() && mobileScreen === "editor";
 }
 
 function createNote(type) {
@@ -4154,8 +4483,12 @@ function renderListViewTitle() {
     return;
   }
 
+  appendGreetingLines(elements.viewTitle, greeting, "mobile-greeting-main", "mobile-greeting-subtitle");
+}
+
+function appendGreetingLines(target, greeting, mainClass, subtitleClass) {
   const mainLine = document.createElement("span");
-  mainLine.className = "mobile-greeting-main";
+  mainLine.className = mainClass;
   if (greeting.kind === "user") {
     const hello = document.createElement("strong");
     hello.textContent = "Olá";
@@ -4169,19 +4502,295 @@ function renderListViewTitle() {
   }
 
   const subtitle = document.createElement("span");
-  subtitle.className = "mobile-greeting-subtitle";
+  subtitle.className = subtitleClass;
   subtitle.textContent = greeting.subtitle;
-  elements.viewTitle.append(mainLine, subtitle);
+  target.append(mainLine, subtitle);
 }
 
 function getMobileGreetingTitle() {
   if (!isMobileLayout() || mobileScreen !== "list" || currentView !== "all") return null;
+  return getWelcomeGreeting();
+}
+
+function getWelcomeGreeting() {
   if (shouldShowFirstVisitGreeting) {
     return { kind: "first", title: "Olha só! Um novato", subtitle: "Seja muito bem-vindo!" };
   }
   const user = getCurrentUser();
   if (!user) return { kind: "guest", title: "Olá!", subtitle: "O que vamos escrever hoje?" };
   return { kind: "user", name: getUserFirstName(user), subtitle: "O que vamos escrever hoje?" };
+}
+
+function renderEditorEmptyGreeting() {
+  elements.editorEmpty.replaceChildren();
+  elements.editorEmpty.classList.toggle("desktop-game-empty", Boolean(timeGame.active && !isMobileLayout()));
+  elements.editorEmpty.classList.add("desktop-greeting-empty");
+  if (timeGame.active && !isMobileLayout()) {
+    renderTimeGame();
+    return;
+  }
+  const greeting = getWelcomeGreeting();
+  const wrapper = document.createElement("div");
+  wrapper.className = "editor-empty-greeting";
+  appendGreetingLines(wrapper, greeting, "editor-empty-greeting-main", "editor-empty-greeting-subtitle");
+  if (!isMobileLayout()) {
+    const button = document.createElement("button");
+    button.className = "time-game-open-button";
+    button.type = "button";
+    button.textContent = "Passar o Tempo";
+    button.title = "Abrir jogo de palavras";
+    button.addEventListener("click", openTimeGame);
+    wrapper.append(button);
+  }
+  elements.editorEmpty.append(wrapper);
+}
+
+function closeDesktopEditorToGreeting() {
+  if (isMobileLayout() || (!selectedNoteId && !timeGame.active)) return;
+  selectedNoteId = null;
+  timeGame.active = false;
+  renderNotes();
+  renderEditor();
+}
+
+function createTimeGameState(options = {}) {
+  return {
+    active: Boolean(options.active),
+    solution: pickTimeGameWord(options.previousSolution),
+    guesses: [],
+    current: "",
+    keyStates: {},
+    status: "Adivinhe a palavra de 5 letras",
+    statusTone: "",
+    ended: false,
+  };
+}
+
+function pickTimeGameWord(previousSolution = "") {
+  if (!TIME_GAME_WORDS.length) return "TERMO";
+  let word = TIME_GAME_WORDS[Math.floor(Math.random() * TIME_GAME_WORDS.length)];
+  if (TIME_GAME_WORDS.length > 1) {
+    while (word === previousSolution) {
+      word = TIME_GAME_WORDS[Math.floor(Math.random() * TIME_GAME_WORDS.length)];
+    }
+  }
+  return word;
+}
+
+function openTimeGame() {
+  const previousSolution = timeGame.solution;
+  selectedNoteId = null;
+  timeGame = createTimeGameState({ active: true, previousSolution });
+  renderNotes();
+  renderEditor();
+  focusTimeGameArea();
+}
+
+function startNextTimeGameRound() {
+  const previousSolution = timeGame.solution;
+  timeGame = createTimeGameState({ active: true, previousSolution });
+  renderEditor();
+  focusTimeGameArea();
+}
+
+function focusTimeGameArea() {
+  elements.editorEmpty.tabIndex = -1;
+  elements.editorEmpty.focus({ preventScroll: true });
+}
+
+function renderTimeGame() {
+  elements.editorEmpty.replaceChildren();
+  const game = document.createElement("section");
+  game.className = "time-game";
+  game.setAttribute("aria-label", "Jogo de palavras");
+
+  const status = document.createElement("div");
+  status.className = "time-game-status";
+  status.dataset.tone = timeGame.statusTone || "neutral";
+  status.setAttribute("aria-live", "polite");
+  status.textContent = timeGame.status;
+
+  const board = document.createElement("div");
+  board.className = "time-game-board";
+  for (let rowIndex = 0; rowIndex < TIME_GAME_MAX_ATTEMPTS; rowIndex += 1) {
+    const submitted = timeGame.guesses[rowIndex];
+    const isCurrentRow = !timeGame.ended && rowIndex === timeGame.guesses.length;
+    const word = submitted?.word || (isCurrentRow ? timeGame.current : "");
+    const states = submitted?.states || [];
+    for (let columnIndex = 0; columnIndex < TIME_GAME_WORD_LENGTH; columnIndex += 1) {
+      const cell = document.createElement("span");
+      cell.className = "time-game-cell";
+      if (states[columnIndex]) cell.dataset.state = states[columnIndex];
+      if (isCurrentRow && columnIndex === timeGame.current.length) cell.classList.add("active");
+      cell.textContent = word[columnIndex] || "";
+      board.append(cell);
+    }
+  }
+
+  const keyboard = document.createElement("div");
+  keyboard.className = "time-game-keyboard";
+  TIME_GAME_KEY_ROWS.forEach((row) => {
+    const rowElement = document.createElement("div");
+    rowElement.className = "time-game-key-row";
+    row.forEach((key) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.timeGameKey = key;
+      button.className = "time-game-key";
+      if (key === "ENTER") button.classList.add("wide");
+      if (key === "BACKSPACE") {
+        button.classList.add("backspace");
+        button.setAttribute("aria-label", "Apagar letra");
+        button.textContent = "⌫";
+      } else {
+        button.textContent = key;
+      }
+      const state = timeGame.keyStates[key];
+      if (state) button.dataset.state = state;
+      button.title = key === "ENTER" ? "Enviar palavra" : key === "BACKSPACE" ? "Apagar letra" : `Letra ${key}`;
+      button.addEventListener("click", () => handleTimeGameInput(key));
+      rowElement.append(button);
+    });
+    keyboard.append(rowElement);
+  });
+
+  const actions = document.createElement("div");
+  actions.className = "time-game-actions";
+  if (timeGame.ended) {
+    const nextButton = document.createElement("button");
+    nextButton.type = "button";
+    nextButton.className = "time-game-next-button";
+    nextButton.textContent = "Nova rodada";
+    nextButton.title = "Começar outra palavra";
+    nextButton.addEventListener("click", startNextTimeGameRound);
+    actions.append(nextButton);
+  }
+
+  game.append(status, board, keyboard, actions);
+  elements.editorEmpty.append(game);
+}
+
+function handleTimeGameKeydown(event) {
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+  if (event.key === "Enter") {
+    event.preventDefault();
+    handleTimeGameInput("ENTER");
+    return;
+  }
+  if (event.key === "Backspace") {
+    event.preventDefault();
+    handleTimeGameInput("BACKSPACE");
+    return;
+  }
+  const letter = normalizeTimeGameWord(event.key);
+  if (letter.length === 1) {
+    event.preventDefault();
+    handleTimeGameInput(letter);
+  }
+}
+
+function handleTimeGameInput(key) {
+  if (!timeGame.active) return;
+  if (timeGame.ended) {
+    if (key === "ENTER") startNextTimeGameRound();
+    return;
+  }
+  if (key === "BACKSPACE") {
+    timeGame.current = timeGame.current.slice(0, -1);
+    timeGame.status = "Adivinhe a palavra de 5 letras";
+    timeGame.statusTone = "";
+    renderEditor();
+    focusTimeGameArea();
+    return;
+  }
+  if (key === "ENTER") {
+    submitTimeGameGuess();
+    return;
+  }
+  const letter = normalizeTimeGameWord(key);
+  if (letter.length !== 1 || timeGame.current.length >= TIME_GAME_WORD_LENGTH) return;
+  timeGame.current += letter;
+  timeGame.status = "Adivinhe a palavra de 5 letras";
+  timeGame.statusTone = "";
+  renderEditor();
+  focusTimeGameArea();
+}
+
+function submitTimeGameGuess() {
+  if (timeGame.current.length < TIME_GAME_WORD_LENGTH) {
+    timeGame.status = "Faltam letras";
+    timeGame.statusTone = "warning";
+    renderEditor();
+    focusTimeGameArea();
+    return;
+  }
+  const guess = normalizeTimeGameWord(timeGame.current);
+  if (!TIME_GAME_VALID_WORDS.has(guess)) {
+    timeGame.status = "Palavra inválida";
+    timeGame.statusTone = "warning";
+    renderEditor();
+    focusTimeGameArea();
+    return;
+  }
+
+  const states = evaluateTimeGameGuess(guess, timeGame.solution);
+  timeGame.guesses.push({ word: guess, states });
+  mergeTimeGameKeyStates(guess, states);
+  timeGame.current = "";
+
+  if (guess === timeGame.solution) {
+    const messages = ["Fantástico", "Excelente", "Muito bom", "Boa", "Na trave", "Salvou"];
+    timeGame.status = messages[Math.min(timeGame.guesses.length - 1, messages.length - 1)];
+    timeGame.statusTone = "success";
+    timeGame.ended = true;
+  } else if (timeGame.guesses.length >= TIME_GAME_MAX_ATTEMPTS) {
+    timeGame.status = `A palavra era ${timeGame.solution}`;
+    timeGame.statusTone = "warning";
+    timeGame.ended = true;
+  } else {
+    timeGame.status = "Continue tentando";
+    timeGame.statusTone = "";
+  }
+
+  renderEditor();
+  focusTimeGameArea();
+}
+
+function evaluateTimeGameGuess(guess, solution) {
+  const states = Array(TIME_GAME_WORD_LENGTH).fill("absent");
+  const remaining = {};
+  for (let index = 0; index < TIME_GAME_WORD_LENGTH; index += 1) {
+    const solutionLetter = solution[index];
+    if (guess[index] === solutionLetter) {
+      states[index] = "correct";
+    } else {
+      remaining[solutionLetter] = (remaining[solutionLetter] || 0) + 1;
+    }
+  }
+  for (let index = 0; index < TIME_GAME_WORD_LENGTH; index += 1) {
+    if (states[index] === "correct") continue;
+    const letter = guess[index];
+    if (remaining[letter] > 0) {
+      states[index] = "present";
+      remaining[letter] -= 1;
+    }
+  }
+  return states;
+}
+
+function mergeTimeGameKeyStates(word, states) {
+  const ranks = { absent: 1, present: 2, correct: 3 };
+  word.split("").forEach((letter, index) => {
+    const state = states[index];
+    const current = timeGame.keyStates[letter];
+    if (!current || ranks[state] > ranks[current]) {
+      timeGame.keyStates[letter] = state;
+    }
+  });
+}
+
+function normalizeTimeGameWord(value) {
+  return removeDiacritics(value).toLocaleUpperCase("pt-BR").replace(/[^A-Z]/g, "");
 }
 
 function getViewScope() {
@@ -4479,9 +5088,13 @@ function bindRichTextEditor(editor) {
   const remember = () => rememberRichTextEditor(editor);
   editor.addEventListener("focus", remember);
   editor.addEventListener("click", remember);
+  editor.addEventListener("keydown", (event) => handleRichTextKeydown(event, editor));
   editor.addEventListener("keyup", remember);
   editor.addEventListener("mouseup", remember);
   editor.addEventListener("input", () => {
+    if (!applyAutoListShortcutAtCaret(editor)) {
+      applyMarkdownShortcutAtCaret(editor);
+    }
     persistRichEditor(editor);
     rememberRichTextEditor(editor);
   });
@@ -4505,6 +5118,31 @@ function bindRichTextEditor(editor) {
   editor.addEventListener("pointermove", handleRichEditorPointerMove);
   editor.addEventListener("pointerup", clearRichTextPressTimer);
   editor.addEventListener("pointercancel", clearRichTextPressTimer);
+}
+
+function handleRichTextKeydown(event, editor) {
+  if (!editor?.isContentEditable) return;
+
+  if (event.ctrlKey && event.shiftKey && !event.altKey) {
+    const key = event.key.toLocaleLowerCase("pt-BR");
+    if (key === "x") {
+      event.preventDefault();
+      rememberRichTextEditor(editor);
+      applyTextFormat("strikeThrough", "", { silent: true });
+      return;
+    }
+
+    if (key === "i") {
+      event.preventDefault();
+      rememberRichTextEditor(editor);
+      applyTextFormat("inlineCode", "", { silent: true });
+      return;
+    }
+  }
+
+  if (event.key === "Enter" && !event.shiftKey && exitRichListIfEmpty(event, editor)) {
+    return;
+  }
 }
 
 function handleRichEditorPointerDown(event, editor) {
@@ -4663,32 +5301,178 @@ function createRangeFromTextOffsets(editor, start, end) {
   return range;
 }
 
+function applyAutoListShortcutAtCaret(editor) {
+  if (!editor || !editor.isContentEditable) return false;
+  const selection = window.getSelection?.();
+  if (!selection?.rangeCount || !selection.isCollapsed) return false;
+  const range = selection.getRangeAt(0);
+  if (!isRangeInsideEditor(editor, range)) return false;
+
+  const position = getAutocorrectTextPosition(editor, range);
+  if (!position?.node || position.node.parentElement?.closest("li, code")) return false;
+  const text = position.node.nodeValue || "";
+  const offset = Math.max(0, Math.min(position.offset, text.length));
+  const shortcut = getAutoListShortcutMatch(text.slice(0, offset));
+  if (!shortcut) return false;
+
+  const shortcutRange = document.createRange();
+  shortcutRange.setStart(position.node, shortcut.start);
+  shortcutRange.setEnd(position.node, offset);
+  shortcutRange.deleteContents();
+
+  const list = document.createElement(shortcut.tag);
+  const item = document.createElement("li");
+  item.textContent = preferences.autocorrect === true
+    ? correctAutocorrectText(shortcut.text, Number.MAX_SAFE_INTEGER).text
+    : shortcut.text;
+  list.append(item);
+  shortcutRange.insertNode(list);
+  placeCaretAtEnd(item);
+  normalizeEditorMarkup(editor);
+  return true;
+}
+
+function getAutoListShortcutMatch(beforeCaret) {
+  const source = String(beforeCaret || "");
+  const ordered = source.match(/(^|\n)(\s*)1\.\s+([^\n]+)$/u);
+  if (ordered?.[3]?.trim()) {
+    return {
+      tag: "ol",
+      text: ordered[3],
+      start: source.length - ordered[0].length + ordered[1].length,
+    };
+  }
+
+  const unordered = source.match(/(^|\n)(\s*)[•-]\s+([^\n]+)$/u);
+  if (unordered?.[3]?.trim()) {
+    return {
+      tag: "ul",
+      text: unordered[3],
+      start: source.length - unordered[0].length + unordered[1].length,
+    };
+  }
+
+  return null;
+}
+
+function exitRichListIfEmpty(event, editor) {
+  const selection = window.getSelection?.();
+  if (!selection?.rangeCount || !selection.isCollapsed) return false;
+  const range = selection.getRangeAt(0);
+  if (!isRangeInsideEditor(editor, range)) return false;
+  const element = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement;
+  const item = element?.closest?.("li");
+  if (!item || !editor.contains(item) || item.textContent.trim()) return false;
+
+  event.preventDefault();
+  const list = item.closest("ol, ul");
+  if (!list) return false;
+  const paragraph = document.createElement("div");
+  paragraph.append(document.createElement("br"));
+  list.parentNode.insertBefore(paragraph, list.nextSibling);
+  item.remove();
+  if (!list.querySelector("li")) list.remove();
+
+  const nextRange = document.createRange();
+  nextRange.setStart(paragraph, 0);
+  nextRange.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(nextRange);
+  normalizeEditorMarkup(editor);
+  persistRichEditor(editor);
+  rememberRichTextEditor(editor);
+  return true;
+}
+
+function placeCaretAtEnd(node) {
+  const selection = window.getSelection?.();
+  if (!selection || !node) return;
+  const range = document.createRange();
+  range.selectNodeContents(node);
+  range.collapse(false);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function applyMarkdownShortcutAtCaret(editor) {
+  if (!editor || !editor.isContentEditable) return false;
+  const selection = window.getSelection?.();
+  if (!selection?.rangeCount || !selection.isCollapsed) return false;
+  const range = selection.getRangeAt(0);
+  if (!isRangeInsideEditor(editor, range)) return false;
+
+  const position = getAutocorrectTextPosition(editor, range);
+  if (!position?.node || position.node.parentElement?.closest("code")) return false;
+  const text = position.node.nodeValue || "";
+  const offset = Math.max(0, Math.min(position.offset, text.length));
+  const shortcut = getMarkdownShortcutMatch(text.slice(0, offset));
+  if (!shortcut) return false;
+
+  const shortcutRange = document.createRange();
+  shortcutRange.setStart(position.node, shortcut.start);
+  shortcutRange.setEnd(position.node, offset);
+  shortcutRange.deleteContents();
+
+  const element = document.createElement(shortcut.tag);
+  const correctedShortcut = preferences.autocorrect === true
+    ? correctAutocorrectText(shortcut.text, Number.MAX_SAFE_INTEGER).text
+    : shortcut.text;
+  element.textContent = correctedShortcut;
+  shortcutRange.insertNode(element);
+
+  const nextRange = document.createRange();
+  nextRange.setStartAfter(element);
+  nextRange.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(nextRange);
+  activeRichRange = nextRange.cloneRange();
+  activeRichSelection = captureRichSelection(editor, nextRange);
+  normalizeEditorMarkup(editor);
+  return true;
+}
+
+function getMarkdownShortcutMatch(beforeCaret) {
+  const source = String(beforeCaret || "");
+  const rules = [
+    { tag: "strong", regex: /\*\*([^*\n]+)\*\*$/u },
+    { tag: "s", regex: /~([^~\n]+)~$/u },
+    { tag: "em", regex: /_([^_\n]+)_$/u },
+    { tag: "code", regex: /`([^`\n]+)`$/u },
+  ];
+
+  for (const rule of rules) {
+    const match = source.match(rule.regex);
+    if (!match || !match[1]?.trim()) continue;
+    const markup = match[0];
+    const start = source.length - markup.length;
+    if (!isMarkdownShortcutBoundary(source.charAt(start - 1))) continue;
+    return {
+      tag: rule.tag,
+      text: match[1],
+      start,
+    };
+  }
+
+  return null;
+}
+
+function isMarkdownShortcutBoundary(character) {
+  return !character || /[\s([{'"“‘,:;.!?¿¡/\\-]/u.test(character);
+}
+
 function applyInlineStyleToSelection(editor, styles = {}) {
   const selection = window.getSelection?.();
   if (!selection?.rangeCount) return false;
   const range = selection.getRangeAt(0);
   if (range.collapsed || !isRangeInsideEditor(editor, range)) return false;
 
-  const fragment = range.extractContents();
-  stripConflictingInlineStyles(fragment, styles);
-  const hasFontSize = hasOwnStyle(styles, "fontSize") && styles.fontSize;
-  const hasColor = hasOwnStyle(styles, "color") && styles.color;
-  const hasBackgroundColor = hasOwnStyle(styles, "backgroundColor") && styles.backgroundColor;
-  const shouldWrap = hasFontSize || hasColor || hasBackgroundColor;
-  let selectedNodes = [];
+  const textSegments = getSelectedTextSegments(editor, range);
+  const selectedNodes = [];
 
-  if (shouldWrap) {
-    const span = document.createElement("span");
-    if (hasFontSize) span.style.fontSize = styles.fontSize;
-    if (hasColor) span.style.color = styles.color;
-    if (hasBackgroundColor) span.style.backgroundColor = styles.backgroundColor;
-    span.append(fragment);
-    range.insertNode(span);
-    selectedNodes = [span];
-  } else {
-    selectedNodes = Array.from(fragment.childNodes);
-    range.insertNode(fragment);
-  }
+  textSegments.slice().reverse().forEach((segment) => {
+    const node = wrapTextSegmentWithStyle(segment.node, segment.start, segment.end, styles);
+    if (node) selectedNodes.unshift(node);
+  });
 
   if (!selectedNodes.length) return false;
   const nextRange = document.createRange();
@@ -4702,6 +5486,88 @@ function applyInlineStyleToSelection(editor, styles = {}) {
   selection.addRange(nextRange);
   activeRichRange = nextRange.cloneRange();
   activeRichSelection = captureRichSelection(editor, nextRange);
+  return true;
+}
+
+function getSelectedTextSegments(editor, range) {
+  const segments = [];
+  const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (!node.nodeValue || !rangeIntersectsNode(range, node)) return NodeFilter.FILTER_REJECT;
+      const start = node === range.startContainer ? range.startOffset : 0;
+      const end = node === range.endContainer ? range.endOffset : node.nodeValue.length;
+      return start < end ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+    },
+  });
+
+  let node = walker.nextNode();
+  while (node) {
+    segments.push({
+      node,
+      start: node === range.startContainer ? range.startOffset : 0,
+      end: node === range.endContainer ? range.endOffset : node.nodeValue.length,
+    });
+    node = walker.nextNode();
+  }
+  return segments;
+}
+
+function rangeIntersectsNode(range, node) {
+  try {
+    return range.intersectsNode(node);
+  } catch {
+    return false;
+  }
+}
+
+function wrapTextSegmentWithStyle(textNode, start, end, styles = {}) {
+  if (!textNode?.nodeValue || start >= end) return null;
+  let target = textNode;
+  const safeStart = Math.max(0, Math.min(start, target.nodeValue.length));
+  const safeEnd = Math.max(safeStart, Math.min(end, target.nodeValue.length));
+  if (safeEnd < target.nodeValue.length) target.splitText(safeEnd);
+  if (safeStart > 0) target = target.splitText(safeStart);
+  if (!target.nodeValue) return null;
+
+  const span = document.createElement("span");
+  if (hasOwnStyle(styles, "fontSize") && styles.fontSize) span.style.fontSize = styles.fontSize;
+  if (hasOwnStyle(styles, "color")) span.style.color = styles.color || "var(--text)";
+  if (hasOwnStyle(styles, "backgroundColor")) span.style.backgroundColor = styles.backgroundColor || "var(--rich-text-bg)";
+  if (!span.getAttribute("style")) return target;
+  target.parentNode.insertBefore(span, target);
+  span.append(target);
+  return span;
+}
+
+function applyInlineElementToSelection(editor, tagName) {
+  const selection = window.getSelection?.();
+  if (!selection?.rangeCount) return false;
+  const range = selection.getRangeAt(0);
+  if (range.collapsed || !isRangeInsideEditor(editor, range)) return false;
+
+  const wrapper = document.createElement(tagName);
+  wrapper.append(range.extractContents());
+  range.insertNode(wrapper);
+
+  const nextRange = document.createRange();
+  nextRange.selectNodeContents(wrapper);
+  selection.removeAllRanges();
+  selection.addRange(nextRange);
+  activeRichRange = nextRange.cloneRange();
+  activeRichSelection = captureRichSelection(editor, nextRange);
+  return true;
+}
+
+function applyTextAlignment(alignment) {
+  const commands = {
+    left: "justifyLeft",
+    center: "justifyCenter",
+    right: "justifyRight",
+    justify: "justifyFull",
+  };
+  const command = commands[String(alignment || "").toLowerCase()];
+  if (!command) return false;
+  document.execCommand(command, false, null);
   return true;
 }
 
@@ -4795,6 +5661,19 @@ function handleFormatSizeMenuClick(event) {
 }
 
 function handleTextFormatMenuClick(event) {
+  const alignToggle = event.target.closest("[data-format-align-toggle]");
+  if (alignToggle) {
+    toggleTextFormatAlignSection();
+    return;
+  }
+
+  const alignButton = event.target.closest("[data-format-align]");
+  if (alignButton) {
+    applyTextFormat("textAlign", alignButton.dataset.formatAlign);
+    closeTextFormatMenu();
+    return;
+  }
+
   const colorTrigger = event.target.closest("[data-format-color-trigger]");
   if (colorTrigger) {
     showTextFormatColorMenu(colorTrigger.dataset.formatColorTrigger, colorTrigger);
@@ -4813,6 +5692,11 @@ function handleTextFormatMenuClick(event) {
     applyTextFormat("fontSize", sizeButton.dataset.formatSize);
     closeTextFormatMenu();
   }
+}
+
+function toggleTextFormatAlignSection() {
+  if (!elements.textFormatAlignSection) return;
+  elements.textFormatAlignSection.hidden = !elements.textFormatAlignSection.hidden;
 }
 
 function handleTextFormatColorMenuClick(event) {
@@ -4863,6 +5747,7 @@ function showTextFormatMenu(x, y, editor = getActiveRichEditor()) {
   closeSiteContextMenu();
   closeToolbarContextMenu();
   renderTextSizeOptions(elements.textFormatSizeOptions);
+  if (elements.textFormatAlignSection) elements.textFormatAlignSection.hidden = true;
 
   elements.textFormatMenu.hidden = false;
   elements.textFormatMenu.style.left = "0px";
@@ -4880,6 +5765,7 @@ function showTextFormatMenu(x, y, editor = getActiveRichEditor()) {
 
 function closeTextFormatMenu() {
   if (elements.textFormatMenu) elements.textFormatMenu.hidden = true;
+  if (elements.textFormatAlignSection) elements.textFormatAlignSection.hidden = true;
   closeTextFormatColorMenu();
 }
 
@@ -5074,6 +5960,16 @@ function applyTextFormat(command, value = "", options = {}) {
       showToast("Selecione o texto para alterar o fundo");
       return;
     }
+  } else if (command === "inlineCode") {
+    if (!applyInlineElementToSelection(editor, "code") && !options.silent) {
+      showToast("Selecione o texto para transformar em código");
+      return;
+    }
+  } else if (command === "textAlign") {
+    if (!applyTextAlignment(value) && !options.silent) {
+      showToast("Selecione um texto para alinhar");
+      return;
+    }
   } else {
     document.execCommand(command, false, null);
   }
@@ -5205,7 +6101,7 @@ function sanitizeRichHtml(html = "", options = {}) {
     font.replaceWith(span);
   });
 
-  const allowed = new Set(["B", "STRONG", "I", "EM", "U", "SPAN", "BR", "DIV", "P"]);
+  const allowed = new Set(["B", "STRONG", "I", "EM", "U", "S", "DEL", "STRIKE", "CODE", "SPAN", "BR", "DIV", "P", "OL", "UL", "LI"]);
   Array.from(container.querySelectorAll("*")).forEach((element) => {
     if (!allowed.has(element.tagName)) {
       const fragment = document.createDocumentFragment();
@@ -5217,11 +6113,15 @@ function sanitizeRichHtml(html = "", options = {}) {
     const color = normalizeCssColor(element.style.color);
     const backgroundColor = normalizeCssColor(element.style.backgroundColor);
     const fontSize = normalizeCssFontSize(element.style.fontSize);
+    const textAlign = normalizeCssTextAlign(element.style.textAlign || element.getAttribute("align"));
     Array.from(element.attributes).forEach((attribute) => element.removeAttribute(attribute.name));
     if (element.tagName === "SPAN") {
       if (color) element.style.color = color;
       if (backgroundColor) element.style.backgroundColor = backgroundColor;
       if (fontSize) element.style.fontSize = fontSize;
+    }
+    if (["DIV", "P", "LI", "OL", "UL"].includes(element.tagName) && textAlign) {
+      element.style.textAlign = textAlign;
     }
   });
   container.querySelectorAll("span").forEach((span) => {
@@ -5256,6 +6156,12 @@ function normalizeCssFontSize(value = "") {
   return normalizeTextSize(pixels) + "px";
 }
 
+function normalizeCssTextAlign(value = "") {
+  const align = String(value || "").trim().toLowerCase();
+  if (["left", "center", "right", "justify"].includes(align)) return align;
+  return "";
+}
+
 function legacyFontSizeToCss(size = "") {
   const map = { 1: 12, 2: 14, 3: 16, 4: 18, 5: 22, 6: 28, 7: 34 };
   return map[size] ? map[size] + "px" : "";
@@ -5264,6 +6170,7 @@ function legacyFontSizeToCss(size = "") {
 function normalizeCssColor(value = "") {
   const color = String(value || "").trim();
   if (!color) return "";
+  if (/^var\(--(?:text|editor|surface|rich-text-bg)\)$/i.test(color)) return color;
   if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(color)) return color;
   if (/^rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+(?:\s*,\s*(0|1|0?\.\d+))?\s*\)$/i.test(color)) return color;
   return "";
@@ -6155,6 +7062,7 @@ function getUserFirstName(user) {
 function refreshAccountUi() {
   renderAccountButton();
   renderNotes();
+  renderEditor();
   updateMobileLayoutState();
 }
 
@@ -6540,6 +7448,199 @@ function renderArchivedNotes() {
     card.querySelector(".danger").addEventListener("click", () => trashArchivedNote(note.id));
     elements.archivedNotesList.append(card);
   });
+}
+
+function saveNotesAsText(noteIds) {
+  const notes = getNotesByIds(noteIds, { includeTrashed: true });
+  if (!notes.length) return;
+  const text = getNotesPlainText(notes);
+  const fileName = notes.length === 1
+    ? `${sanitizeFileName(notes[0].title || "nota-noti")}.txt`
+    : `noti-notas-${formatBackupDate(new Date())}.txt`;
+  downloadBlob(new Blob([text], { type: "text/plain;charset=utf-8" }), fileName);
+  showToast(notes.length === 1 ? "Nota salva em TXT" : `${notes.length} notas salvas em TXT`);
+}
+
+async function copyNotesToClipboard(noteIds) {
+  const notes = getNotesByIds(noteIds, { includeTrashed: true });
+  if (!notes.length) return;
+  const text = getNotesPlainText(notes);
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error("Clipboard API indisponível");
+    await navigator.clipboard.writeText(text);
+  } catch (error) {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    document.body.append(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    textarea.remove();
+  }
+  showToast(notes.length === 1 ? "Nota copiada" : `${notes.length} notas copiadas`);
+}
+
+function downloadNotesTransfer(noteIds) {
+  const notes = getNotesByIds(noteIds, { includeTrashed: true });
+  if (!notes.length) return;
+  const folderIds = new Set(notes.map((note) => note.folderId).filter(Boolean));
+  const folders = state.folders.filter((folder) => folderIds.has(folder.id));
+  const payloadState = normalizeState({
+    folders: clonePlainData(folders),
+    notes: clonePlainData(notes),
+  });
+  const payload = {
+    type: BACKUP_TYPE,
+    version: BACKUP_VERSION,
+    app: "Noti",
+    transfer: true,
+    exportedAt: new Date().toISOString(),
+    summary: {
+      notes: payloadState.notes.length,
+      folders: payloadState.folders.length,
+      attachments: payloadState.notes.reduce((total, note) => {
+        const checklistImages = note.items.filter((item) => item.image?.dataUrl).length;
+        const shoppingImages = note.shoppingItems.filter((item) => item.image?.dataUrl).length;
+        return total + note.attachments.length + checklistImages + shoppingImages;
+      }, 0),
+      drawings: payloadState.notes.reduce((total, note) => total + note.pageDrawings.length + note.drawingBlocks.length, 0),
+    },
+    state: payloadState,
+  };
+  const fileName = notes.length === 1
+    ? `${sanitizeFileName(notes[0].title || "noti-transfer")}-transfer.json`
+    : `noti-transfer-${formatBackupDate(new Date())}.json`;
+  downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }), fileName);
+  showToast(notes.length === 1 ? "Nota pronta para transferir" : `${notes.length} notas prontas para transferir`);
+}
+
+function getNotesPlainText(notes) {
+  return notes.map(formatNoteForText).join("\n\n----------------------------------------\n\n");
+}
+
+function formatNoteForText(note) {
+  const folder = getFolder(note.folderId);
+  const lines = [
+    note.title.trim() || "Sem título",
+    `Tipo: ${getExportNoteTypeLabel(note)}`,
+    `Pasta: ${folder?.name || "Sem pasta"}`,
+    `Criada em: ${formatFullDateTime(note.createdAt)}`,
+    `Atualizada em: ${formatFullDateTime(note.updatedAt)}`,
+    "",
+  ];
+
+  if (note.type === "checklist") {
+    lines.push(...formatChecklistForText(note));
+  } else if (note.type === "shopping") {
+    lines.push(...formatShoppingForText(note));
+  } else if (note.type === "goal") {
+    lines.push(...formatGoalForText(note));
+  } else {
+    lines.push(...formatNoteBlocksForText(note));
+  }
+
+  const looseAttachments = note.attachments.filter((attachment) => !note.blocks?.some((block) => block.type === "image" && block.attachmentId === attachment.id));
+  if (looseAttachments.length) {
+    lines.push("", "Anexos:");
+    looseAttachments.forEach((attachment) => lines.push(`- ${attachment.name || "Anexo"}`));
+  }
+  if (note.pageDrawings.length || note.drawingBlocks.length) {
+    lines.push("", `Rabiscos: ${note.pageDrawings.length + note.drawingBlocks.length}`);
+  }
+
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function getExportNoteTypeLabel(note) {
+  if (note.type === "checklist") return "Checklist";
+  if (note.type === "shopping") return "Compras";
+  if (note.type === "goal") return "Meta";
+  return "Nota";
+}
+
+function formatNoteBlocksForText(note) {
+  const lines = [];
+  (note.blocks || []).forEach((block) => {
+    if (block.type === "text") {
+      const text = getPlainTextFromHtml(getRichBlockHtml(block));
+      if (text) lines.push(text);
+      return;
+    }
+    if (block.type === "image") {
+      const attachment = note.attachments.find((item) => item.id === block.attachmentId);
+      lines.push(`[Imagem: ${attachment?.name || "imagem anexada"}]`);
+      return;
+    }
+    if (block.type === "checklist") {
+      const checklistLines = normalizeInlineChecklistItems(block.items)
+        .filter((item) => item.text.trim() || item.done)
+        .map((item) => `${item.done ? "[x]" : "[ ]"} ${item.text.trim() || "Item sem texto"}`);
+      if (checklistLines.length) lines.push(...checklistLines);
+    }
+  });
+  return lines.length ? lines : ["Nota vazia"];
+}
+
+function formatChecklistForText(note) {
+  if (!note.items.length) return ["Checklist vazio"];
+  return note.items.map((item) => {
+    const text = getPlainTextFromHtml(getRichItemHtml(item)) || "Item sem texto";
+    const image = item.image?.name ? ` | Imagem: ${item.image.name}` : "";
+    return `${item.done ? "[x]" : "[ ]"} ${text}${image}`;
+  });
+}
+
+function formatShoppingForText(note) {
+  const lines = [`Moeda: ${note.currency || "BRL"}`, `Total: ${formatCurrency(getShoppingTotal(note), note.currency)}`];
+  if (!note.shoppingItems.length) return [...lines, "", "Lista de compras vazia"];
+  lines.push("");
+  note.shoppingItems.forEach((item) => {
+    const text = getPlainTextFromHtml(getRichItemHtml(item)) || "Item sem nome";
+    const quantity = normalizeNumber(item.quantity, 1);
+    const price = normalizeNumber(item.price, 0);
+    const subtotal = quantity * price;
+    const image = item.image?.name ? ` | Imagem: ${item.image.name}` : "";
+    lines.push(`${item.done ? "[x]" : "[ ]"} ${text} | Qtd: ${quantity} | Valor: ${formatCurrency(price, note.currency)} | Subtotal: ${formatCurrency(subtotal, note.currency)}${image}`);
+  });
+  return lines;
+}
+
+function formatGoalForText(note) {
+  const goal = ensureGoal(note);
+  const metrics = getGoalMetrics(note);
+  return [
+    `Objetivo: ${goal.name || note.title || "Meta"}`,
+    `Categoria: ${goal.category || "Sem categoria"}`,
+    `Meta: ${formatCurrency(metrics.target, "BRL")}`,
+    `Dinheiro acumulado: ${formatCurrency(metrics.saved, "BRL")}`,
+    `Faltam: ${formatCurrency(metrics.remaining, "BRL")}`,
+    `Progresso: ${formatPercent(metrics.percent)}`,
+    `Início: ${formatGoalDate(goal.startDate)}`,
+    `Prazo: ${metrics.hasDeadline ? formatGoalDate(goal.targetDate) : "Sem prazo"}`,
+  ];
+}
+
+function sanitizeFileName(value) {
+  const clean = String(value || "")
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .slice(0, 80);
+  return clean || "noti-nota";
+}
+
+function downloadBlob(blob, fileName) {
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.href = url;
+  link.download = fileName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 500);
 }
 
 function downloadNotesBackup() {

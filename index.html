@@ -350,6 +350,10 @@
           <button type="button" data-mobile-note-action="highlight" title="Destacar"><svg><use href="#icon-sun"></use></svg><span>Destacar</span></button>
           <button type="button" data-mobile-note-action="archive" title="Arquivar"><svg><use href="#icon-archive"></use></svg><span>Arquivar</span></button>
           <button type="button" data-mobile-note-action="move" title="Mover para pasta"><svg><use href="#icon-folder"></use></svg><span>Mover para pasta</span></button>
+          <button type="button" data-mobile-note-action="save" title="Salvar como TXT"><svg><use href="#icon-download"></use></svg><span>Salvar</span></button>
+          <button type="button" data-mobile-note-action="copy" title="Copiar nota"><svg><use href="#icon-file"></use></svg><span>Copiar</span></button>
+          <button type="button" data-mobile-note-action="transfer" title="Transferir nota"><svg><use href="#icon-upload"></use></svg><span>Transferir</span></button>
+          <button type="button" data-mobile-note-action="select" title="Selecionar notas"><svg><use href="#icon-check"></use></svg><span>Selecionar</span></button>
           <button type="button" data-mobile-note-action="edit" title="Editar"><svg><use href="#icon-edit"></use></svg><span>Editar</span></button>
           <button type="button" data-mobile-note-action="delete" title="Apagar"><svg><use href="#icon-trash"></use></svg><span>Apagar</span></button>
           <button type="button" data-mobile-note-action="restore" title="Recuperar"><svg><use href="#icon-restore"></use></svg><span>Recuperar</span></button>
@@ -451,6 +455,36 @@
                     <button type="button" data-format-color-trigger="backgroundColor" aria-label="Fundo do texto" title="Fundo do texto">
                       <svg><use href="#icon-text-highlight"></use></svg>
                     </button>
+                    <button type="button" data-format-align-toggle aria-label="Alinhamento" title="Alinhamento">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M4 6h16M4 10h12M4 14h16M4 18h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="text-format-menu-section text-format-align-section" id="textFormatAlignSection" hidden>
+                    <p>Alinhamento</p>
+                    <div class="text-format-align-options" aria-label="Alinhamento do texto">
+                      <button type="button" data-format-align="left" aria-label="Alinhar à esquerda" title="Alinhar à esquerda">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M4 10h10M4 14h16M4 18h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                        </svg>
+                      </button>
+                      <button type="button" data-format-align="center" aria-label="Centralizar" title="Centralizar">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M7 10h10M4 14h16M8 18h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                        </svg>
+                      </button>
+                      <button type="button" data-format-align="right" aria-label="Alinhar à direita" title="Alinhar à direita">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M10 10h10M4 14h16M12 18h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                        </svg>
+                      </button>
+                      <button type="button" data-format-align="justify" aria-label="Justificar" title="Justificar">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M4 10h16M4 14h16M4 18h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                   <div class="text-format-menu-section">
                     <p>Tamanho</p>
