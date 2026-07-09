@@ -5143,11 +5143,60 @@ function makeChessComputerMove() {
 function chooseChessComputerMove(board, color) {
   const moves = getAllChessMoves(board, color);
   if (!moves.length) return null;
-  const captures = moves.filter((move) => board[move.to] && getChessPieceColor(board[move.to]) !== color);
-  if (captures.length && Math.random() < 0.28) {
-    return captures[Math.floor(Math.random() * captures.length)];
+  const scoredMoves = moves
+    .map((move) => ({ ...move, score: scoreChessComputerMove(board, move, color) }))
+    .sort((a, b) => b.score - a.score);
+  const winningCapture = scoredMoves.find((move) => board[move.to]?.[1] === "k");
+  if (winningCapture) return winningCapture;
+  if (Math.random() < 0.18) {
+    const relaxedPool = scoredMoves.slice(0, Math.max(1, Math.ceil(scoredMoves.length * 0.45)));
+    return relaxedPool[Math.floor(Math.random() * relaxedPool.length)];
   }
-  return moves[Math.floor(Math.random() * moves.length)];
+  const bestScore = scoredMoves[0].score;
+  const topMoves = scoredMoves.filter((move) => bestScore - move.score <= 14);
+  return topMoves[Math.floor(Math.random() * topMoves.length)];
+}
+
+function scoreChessComputerMove(board, move, color) {
+  const piece = board[move.from];
+  const target = board[move.to];
+  const opponent = color === "w" ? "b" : "w";
+  const pieceValue = getChessPieceValue(piece);
+  let score = Math.random() * 6;
+
+  if (target && getChessPieceColor(target) !== color) {
+    score += getChessPieceValue(target) * 11;
+    score -= pieceValue * 0.45;
+  }
+
+  const nextBoard = moveChessPiece(board, move.from, move.to);
+  const targetRow = Math.floor(move.to / 8);
+  const targetCol = move.to % 8;
+  const centerBonus = 3.5 - (Math.abs(targetRow - 3.5) + Math.abs(targetCol - 3.5));
+  score += centerBonus * 2.2;
+
+  if (piece?.[1] === "p") {
+    score += color === "b" ? targetRow * 0.7 : (7 - targetRow) * 0.7;
+  }
+  if ((piece === "bn" || piece === "bb") && move.from < 8) score += 4;
+  if (piece === "bq" && move.from === 3) score -= 2.5;
+
+  const opponentMoves = getAllChessMoves(nextBoard, opponent);
+  const unsafe = opponentMoves.some((opponentMove) => opponentMove.to === move.to);
+  if (unsafe) score -= pieceValue * 4.2;
+
+  const pressure = getChessLegalMoves(move.to, nextBoard, color)
+    .map((to) => nextBoard[to])
+    .filter((candidate) => candidate && getChessPieceColor(candidate) === opponent)
+    .reduce((best, candidate) => Math.max(best, getChessPieceValue(candidate)), 0);
+  score += pressure * 1.6;
+
+  return score;
+}
+
+function getChessPieceValue(piece) {
+  const values = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 100 };
+  return values[String(piece || "").charAt(1)] || 0;
 }
 
 function getAllChessMoves(board, color) {
