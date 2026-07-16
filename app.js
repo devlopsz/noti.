@@ -4,6 +4,10 @@ const USER_STORE_KEY = "noti-users-v1";
 const CURRENT_USER_KEY = "noti-current-user-v1";
 const PREFS_KEY = "noti-preferences-v1";
 const FIRST_VISIT_KEY = "noti-first-visit-seen-v1";
+const SUPABASE_URL = "https://jzryqqmaumsuxmfgfmtq.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6cnlxcW1hdW1zdXhtZmdmbXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyMTg2MjMsImV4cCI6MjA5OTc5NDYyM30.SzRZ8a64UZrtcXEdtMNfCMUzEgWrPCZl6LMUN18wvo4";
+const CLOUD_DATA_TABLE = "noti_user_data";
+const CLOUD_SYNC_DEBOUNCE_MS = 1800;
 const BACKUP_TYPE = "noti-backup";
 const BACKUP_VERSION = 1;
 const MAX_ATTACHMENT_BYTES = 2.5 * 1024 * 1024;
@@ -388,6 +392,13 @@ let passTimeScreen = "";
 let ticTacToeGame = createTicTacToeState();
 let chessGame = createChessState();
 let notisualGame = createNotisualState();
+let supabaseClient = null;
+let cloudSessionUserId = "";
+let cloudInitialSyncDone = false;
+let cloudSyncTimer = 0;
+let cloudSyncSaving = false;
+let cloudSyncQueued = false;
+let cloudSyncStatus = { tone: "offline", text: "Entre para sincronizar em nuvem." };
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -622,6 +633,8 @@ function init() {
   render();
   setupAutoTooltips();
   setupPagesUpdateChecker();
+  initializeCloudAuth();
+  window.addEventListener("online", () => scheduleCloudSync("Reconectado. Sincronizando..."));
   localStorage.setItem(FIRST_VISIT_KEY, "true");
 }
 
@@ -1195,8 +1208,279 @@ function normalizeState(rawState) {
   };
 }
 
-function saveState() {
+function saveState(options = {}) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (options.sync !== false) scheduleCloudSync("Notas salvas. Sincronizando...");
+}
+
+function getSupabaseClient() {
+  if (supabaseClient) return supabaseClient;
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !window.supabase?.createClient) {
+    return null;
+  }
+  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  });
+  return supabaseClient;
+}
+
+async function initializeCloudAuth() {
+  const client = getSupabaseClient();
+  if (!client) {
+    setCloudSyncStatus("offline", "Sincronização local ativa neste navegador.");
+    return;
+  }
+
+  setCloudSyncStatus("idle", "Entre para sincronizar notas, temas e pontos em nuvem.");
+  try {
+    const { data, error } = await client.auth.getSession();
+    if (error) throw error;
+    await handleCloudSession(data?.session || null, { initial: true });
+    client.auth.onAuthStateChange((_event, session) => {
+      window.setTimeout(() => handleCloudSession(session, { event: _event }), 0);
+    });
+  } catch (error) {
+    console.warn("Não foi possível iniciar o Supabase.", error);
+    setCloudSyncStatus("error", "Não foi possível conectar à nuvem agora.");
+  }
+}
+
+async function handleCloudSession(session, options = {}) {
+  const supabaseUser = session?.user || null;
+  if (!supabaseUser) {
+    if (cloudSessionUserId && options.event === "SIGNED_OUT") {
+      clearCurrentSessionLocally();
+    }
+    cloudSessionUserId = "";
+    cloudInitialSyncDone = false;
+    setCloudSyncStatus("offline", "Entre para sincronizar em nuvem.");
+    return;
+  }
+
+  if (cloudSessionUserId === supabaseUser.id && cloudInitialSyncDone && options.event === "INITIAL_SESSION") return;
+
+  const localUser = upsertLocalUserFromCloudUser(supabaseUser);
+  cloudSessionUserId = localUser.id;
+  currentUserId = localUser.id;
+  localStorage.setItem(CURRENT_USER_KEY, currentUserId);
+  saveUsers({ sync: false });
+  refreshAccountUi();
+  setCloudSyncStatus("syncing", "Sincronizando seus dados...");
+
+  await loadCloudSnapshotForCurrentUser();
+}
+
+function upsertLocalUserFromCloudUser(supabaseUser, draft = {}) {
+  const metadata = supabaseUser?.user_metadata || {};
+  const email = String(supabaseUser?.email || draft.email || "").toLowerCase();
+  let user = users.find((candidate) => candidate.id === supabaseUser.id)
+    || users.find((candidate) => email && candidate.email === email)
+    || null;
+  const now = Date.now();
+  const next = {
+    id: supabaseUser.id,
+    name: String(metadata.name || metadata.full_name || draft.name || user?.name || "").trim() || "Usuário Noti",
+    username: normalizeUsername(metadata.username || draft.username || user?.username || email.split("@")[0] || "usuario"),
+    email,
+    phone: normalizePhoneNumber(metadata.phone || draft.phone || user?.phone || ""),
+    phoneCountry: getPhoneCountry(metadata.phoneCountry || draft.phoneCountry || user?.phoneCountry || "BR").code,
+    password: user?.password || "",
+    photo: typeof metadata.photo === "string" ? metadata.photo : (draft.photo || user?.photo || ""),
+    timeGameScore: Math.max(normalizeNumber(user?.timeGameScore, 0), normalizeNumber(draft.timeGameScore, 0)),
+    notisualScore: Math.max(normalizeNumber(user?.notisualScore, 0), normalizeNumber(draft.notisualScore, 0)),
+    createdAt: Number.isFinite(user?.createdAt) ? user.createdAt : now,
+    updatedAt: now,
+  };
+
+  if (user) Object.assign(user, next);
+  else {
+    user = next;
+    users.push(user);
+  }
+  users = users.filter((candidate, index) => {
+    if (candidate === user) return true;
+    if (candidate.id === user.id || (user.email && candidate.email === user.email)) return false;
+    return users.indexOf(candidate) === index;
+  });
+  return user;
+}
+
+async function loadCloudSnapshotForCurrentUser() {
+  if (!cloudSessionUserId) return;
+  const client = getSupabaseClient();
+  if (!client) return;
+
+  try {
+    const { data, error } = await client
+      .from(CLOUD_DATA_TABLE)
+      .select("user_id,email,profile,app_state,preferences,updated_at,version")
+      .eq("user_id", cloudSessionUserId)
+      .maybeSingle();
+    if (error) throw error;
+
+    cloudInitialSyncDone = true;
+    if (!data) {
+      await saveCloudSnapshotNow({ force: true });
+      setCloudSyncStatus("synced", "Sincronização em nuvem ativada.");
+      return;
+    }
+
+    applyCloudSnapshot(data);
+    await saveCloudSnapshotNow({ force: true });
+    setCloudSyncStatus("synced", "Sincronizado com a nuvem.");
+  } catch (error) {
+    console.warn("Não foi possível carregar dados da nuvem.", error);
+    cloudInitialSyncDone = true;
+    setCloudSyncStatus("error", getCloudSyncErrorMessage(error));
+  }
+}
+
+function applyCloudSnapshot(snapshot) {
+  const cloudState = normalizeState(snapshot?.app_state || {});
+  const cloudPreferences = normalizePreferencesData(snapshot?.preferences || {}, preferences);
+  const user = getCurrentUser();
+  if (user && snapshot?.profile && typeof snapshot.profile === "object") {
+    const profile = snapshot.profile;
+    user.name = String(profile.name || user.name || "").trim() || "Usuário Noti";
+    user.username = normalizeUsername(profile.username || user.username);
+    user.email = String(snapshot.email || profile.email || user.email || "").toLowerCase();
+    user.phone = normalizePhoneNumber(profile.phone || user.phone || "");
+    user.phoneCountry = getPhoneCountry(profile.phoneCountry || user.phoneCountry || "BR").code;
+    user.photo = typeof profile.photo === "string" ? profile.photo : user.photo;
+    user.timeGameScore = Math.max(normalizeNumber(user.timeGameScore, 0), normalizeNumber(profile.timeGameScore, 0));
+    user.notisualScore = Math.max(normalizeNumber(user.notisualScore, 0), normalizeNumber(profile.notisualScore, 0));
+    user.updatedAt = Date.now();
+  }
+
+  const hasLocalStateNow = Boolean(localStorage.getItem(STORAGE_KEY));
+  const nextState = hasLocalStateNow && state.notes.length
+    ? buildBackupMerge(cloudState).state
+    : cloudState;
+
+  state.folders = nextState.folders;
+  state.notes = nextState.notes;
+  preferences = cloudPreferences;
+  currentView = "all";
+  selectedNoteId = null;
+
+  saveUsers({ sync: false });
+  saveState({ sync: false });
+  savePreferences({ sync: false });
+  localStorage.setItem(THEME_KEY, preferences.theme);
+  applyTheme(preferences.theme);
+  applyPreferences();
+  render();
+}
+
+function scheduleCloudSync(message = "Sincronizando...") {
+  if (!cloudSessionUserId || !cloudInitialSyncDone || !navigator.onLine) return;
+  setCloudSyncStatus("syncing", message);
+  window.clearTimeout(cloudSyncTimer);
+  cloudSyncTimer = window.setTimeout(() => {
+    saveCloudSnapshotNow().catch((error) => {
+      console.warn("Falha ao sincronizar.", error);
+    });
+  }, CLOUD_SYNC_DEBOUNCE_MS);
+}
+
+async function saveCloudSnapshotNow(options = {}) {
+  const client = getSupabaseClient();
+  const user = getCurrentUser();
+  if (!client || !cloudSessionUserId || !user) return false;
+  if (!cloudInitialSyncDone && !options.force) return false;
+  if (cloudSyncSaving) {
+    cloudSyncQueued = true;
+    return false;
+  }
+
+  cloudSyncSaving = true;
+  try {
+    const payload = {
+      user_id: cloudSessionUserId,
+      email: user.email,
+      profile: buildCloudProfile(user),
+      app_state: clonePlainData(state),
+      preferences: clonePlainData(preferences),
+      version: BACKUP_VERSION,
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await client
+      .from(CLOUD_DATA_TABLE)
+      .upsert(payload, { onConflict: "user_id" });
+    if (error) throw error;
+    setCloudSyncStatus("synced", "Sincronizado com a nuvem.");
+    return true;
+  } catch (error) {
+    setCloudSyncStatus("error", getCloudSyncErrorMessage(error));
+    throw error;
+  } finally {
+    cloudSyncSaving = false;
+    if (cloudSyncQueued) {
+      cloudSyncQueued = false;
+      scheduleCloudSync("Finalizando sincronização...");
+    }
+  }
+}
+
+function buildCloudProfile(user) {
+  return {
+    id: cloudSessionUserId || user.id,
+    name: user.name || "",
+    username: normalizeUsername(user.username || "@usuario"),
+    email: user.email || "",
+    phone: user.phone || "",
+    phoneCountry: getPhoneCountry(user.phoneCountry || "BR").code,
+    photo: user.photo || "",
+    timeGameScore: normalizeNumber(user.timeGameScore, 0),
+    notisualScore: normalizeNumber(user.notisualScore, 0),
+    updatedAt: Date.now(),
+  };
+}
+
+function setCloudSyncStatus(tone, text) {
+  cloudSyncStatus = { tone, text };
+  if (elements?.profileStatus) {
+    elements.profileStatus.textContent = getProfileStatusText(getCurrentUser());
+    elements.profileStatus.dataset.syncTone = tone;
+  }
+}
+
+function getProfileStatusText(user) {
+  if (!user) return "Entre para sincronizar notas, temas e pontos em qualquer dispositivo.";
+  if (cloudSessionUserId === user.id) return cloudSyncStatus.text || "Sincronização em nuvem ativa.";
+  return "Perfil salvo neste navegador.";
+}
+
+function getCloudSyncErrorMessage(error) {
+  const code = String(error?.code || "");
+  const message = String(error?.message || "");
+  if (code === "42P01" || code === "PGRST205" || /noti_user_data|schema cache|relation/i.test(message)) {
+    return "Crie a tabela noti_user_data no Supabase para ativar a nuvem.";
+  }
+  if (!navigator.onLine) return "Sem internet. Alterações salvas neste aparelho.";
+  return "Não foi possível sincronizar agora. Tentaremos novamente.";
+}
+
+function getAuthErrorMessage(error) {
+  const message = String(error?.message || "").toLowerCase();
+  if (message.includes("already registered") || message.includes("already exists")) return "Esse e-mail já tem conta. Tente entrar.";
+  if (message.includes("invalid login") || message.includes("invalid credentials")) return "E-mail ou senha incorretos.";
+  if (message.includes("email not confirmed")) return "Confirme seu e-mail antes de entrar.";
+  if (message.includes("password")) return "A senha precisa atender aos requisitos do Supabase.";
+  if (!navigator.onLine) return "Sem internet para conectar à conta.";
+  return "Não foi possível conectar à conta agora.";
+}
+
+function clearCurrentSessionLocally() {
+  currentUserId = "";
+  localStorage.removeItem(CURRENT_USER_KEY);
+  pendingProfilePhoto = "";
+  refreshAccountUi();
+  renderSettingsIfOpen();
 }
 
 function render() {
@@ -8070,8 +8354,9 @@ function loadPreferences() {
   }
 }
 
-function savePreferences() {
+function savePreferences(options = {}) {
   localStorage.setItem(PREFS_KEY, JSON.stringify(preferences));
+  if (options.sync !== false) scheduleCloudSync("Preferências salvas. Sincronizando...");
 }
 
 function applyPreferences() {
@@ -8590,8 +8875,9 @@ function loadUsers() {
     return [];
   }
 }
-function saveUsers() {
+function saveUsers(options = {}) {
   localStorage.setItem(USER_STORE_KEY, JSON.stringify(users));
+  if (options.sync !== false) scheduleCloudSync("Perfil salvo. Sincronizando...");
 }
 
 function getCurrentUser() {
@@ -8651,7 +8937,7 @@ function setActiveAccountPanel(panel) {
   elements.loginForm.hidden = isSignup;
   elements.signupForm.hidden = !isSignup;
   const hint = document.querySelector("#accountModeHint");
-  if (hint) hint.textContent = isSignup ? "Crie sua conta local para continuar." : "Entre com sua conta local para continuar.";
+  if (hint) hint.textContent = isSignup ? "Crie sua conta para sincronizar o Noti." : "Entre com sua conta para sincronizar seus dados.";
   const title = document.querySelector("#accountModalTitle");
   if (title) title.textContent = isSignup ? "Criar conta" : "Entrar no Noti";
 }
@@ -8679,7 +8965,7 @@ async function handleSignupPhoto() {
   renderAvatar(elements.signupPhotoPreview, { photo: currentSignupPhoto });
 }
 
-function handleSignup(event) {
+async function handleSignup(event) {
   event.preventDefault();
   const name = elements.signupNameInput.value.trim();
   const username = normalizeUsername(elements.signupUsernameInput.value);
@@ -8692,6 +8978,45 @@ function handleSignup(event) {
     showToast("Preencha nome, @usuário, e-mail e senha");
     return;
   }
+  const client = getSupabaseClient();
+
+  if (client) {
+    try {
+      const { data, error } = await client.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { name, username, phone, phoneCountry, photo: currentSignupPhoto },
+        },
+      });
+      if (error) throw error;
+
+      if (data?.user) {
+        upsertLocalUserFromCloudUser(data.user, { name, username, email, phone, phoneCountry, photo: currentSignupPhoto });
+        saveUsers({ sync: false });
+      }
+
+      elements.signupForm.reset();
+      elements.signupUsernameInput.value = "@";
+      elements.signupCountrySelect.value = "BR";
+      currentSignupPhoto = "";
+      renderAvatar(elements.signupPhotoPreview, null);
+      refreshAccountUi();
+      closeModals();
+      if (data?.session) {
+        await handleCloudSession(data.session);
+        showToast("Conta criada e sincronização ativada");
+      } else {
+        showToast("Conta criada. Confirme o e-mail se o Supabase solicitar.");
+      }
+      return;
+    } catch (error) {
+      console.warn("Cadastro em nuvem falhou.", error);
+      showToast(getAuthErrorMessage(error));
+      return;
+    }
+  }
+
   if (users.some((user) => user.email === email || user.username.toLowerCase() === username.toLowerCase())) {
     showToast("E-mail ou usuário já cadastrado");
     return;
@@ -8713,20 +9038,47 @@ function handleSignup(event) {
   showToast("Conta local criada");
 }
 
-function handleLogin(event) {
+async function handleLogin(event) {
   event.preventDefault();
   const identifier = elements.loginIdentifierInput.value.trim().toLowerCase();
   const password = elements.loginPasswordInput.value;
-  const user = users.find((candidate) => {
+  const client = getSupabaseClient();
+  const localUser = users.find((candidate) => {
     return candidate.email === identifier || candidate.username.toLowerCase() === normalizeUsername(identifier).toLowerCase();
   });
 
-  if (!user || user.password !== password) {
+  if (client) {
+    const loginEmail = identifier.startsWith("@") ? localUser?.email : identifier;
+    if (!loginEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginEmail)) {
+      showToast("Neste aparelho, entre com o e-mail da conta para sincronizar.");
+      return;
+    }
+    try {
+      const { data, error } = await client.auth.signInWithPassword({ email: loginEmail, password });
+      if (error) throw error;
+      if (data?.session) {
+        await handleCloudSession(data.session);
+      }
+      elements.loginForm.reset();
+      refreshAccountUi();
+      closeModals();
+      showToast("Conta conectada e sincronizando");
+      return;
+    } catch (error) {
+      console.warn("Login em nuvem falhou.", error);
+      if (!localUser || localUser.password !== password) {
+        showToast(getAuthErrorMessage(error));
+        return;
+      }
+    }
+  }
+
+  if (!localUser || localUser.password !== password) {
     showToast("Login ou senha incorretos");
     return;
   }
 
-  currentUserId = user.id;
+  currentUserId = localUser.id;
   localStorage.setItem(CURRENT_USER_KEY, currentUserId);
   elements.loginForm.reset();
   refreshAccountUi();
@@ -8734,11 +9086,18 @@ function handleLogin(event) {
   showToast("Conta conectada");
 }
 
-function logoutUser() {
-  currentUserId = "";
-  localStorage.removeItem(CURRENT_USER_KEY);
-  pendingProfilePhoto = "";
-  refreshAccountUi();
+async function logoutUser() {
+  const client = getSupabaseClient();
+  if (client && cloudSessionUserId) {
+    try {
+      await client.auth.signOut();
+    } catch (error) {
+      console.warn("Não foi possível sair da nuvem.", error);
+    }
+  }
+  cloudSessionUserId = "";
+  cloudInitialSyncDone = false;
+  clearCurrentSessionLocally();
   renderSettings();
   showToast("Você saiu da conta");
 }
@@ -8781,7 +9140,8 @@ function renderSettingsProfile() {
   renderAvatar(elements.settingsHeaderAvatar, user ? { ...user, photo: pendingProfilePhoto || user.photo } : null);
   elements.profileDisplayName.textContent = user?.name || "Sem conta";
   elements.profileDisplayUsername.textContent = user ? user.username : "Entre para ver seu perfil";
-  elements.profileStatus.textContent = user ? "Perfil local salvo neste navegador." : "Entre para editar seu perfil local.";
+  elements.profileStatus.textContent = getProfileStatusText(user);
+  elements.profileStatus.dataset.syncTone = cloudSyncStatus.tone;
   elements.profileLoginButton.hidden = Boolean(user);
   elements.editProfileButton.hidden = !user;
   elements.logoutButton.hidden = !user;
@@ -8823,7 +9183,7 @@ async function handleSettingsPhoto() {
   renderAvatar(elements.settingsProfilePhoto, { photo: pendingProfilePhoto });
 }
 
-function saveProfileSettings() {
+async function saveProfileSettings() {
   const user = getCurrentUser();
   if (!user) {
     openAccountModal("login");
@@ -8845,6 +9205,7 @@ function saveProfileSettings() {
     return;
   }
 
+  const previousEmail = user.email;
   user.name = name;
   user.username = username;
   user.email = email;
@@ -8854,6 +9215,31 @@ function saveProfileSettings() {
   user.updatedAt = Date.now();
   pendingProfilePhoto = "";
   saveUsers();
+
+  if (cloudSessionUserId === user.id) {
+    const client = getSupabaseClient();
+    if (client) {
+      try {
+        const updatePayload = {
+          data: {
+            name: user.name,
+            username: user.username,
+            phone: user.phone,
+            phoneCountry: user.phoneCountry,
+            photo: user.photo,
+          },
+        };
+        if (email && email !== previousEmail) updatePayload.email = email;
+        const { error } = await client.auth.updateUser(updatePayload);
+        if (error) throw error;
+        await saveCloudSnapshotNow({ force: true });
+      } catch (error) {
+        console.warn("Perfil em nuvem não foi totalmente atualizado.", error);
+        setCloudSyncStatus("error", "Perfil local salvo. A nuvem tentará sincronizar depois.");
+      }
+    }
+  }
+
   refreshAccountUi();
   closeProfileEditDialog();
   renderSettings();

@@ -5534,6 +5534,14 @@ body.notes-selection-mode .note-card:nth-of-type(2n) {
   color: #8d8d92;
 }
 
+.profile-dashboard .settings-status[data-sync-tone="synced"] {
+  color: color-mix(in srgb, var(--accent) 72%, var(--text-muted));
+}
+
+.profile-dashboard .settings-status[data-sync-tone="error"] {
+  color: #ff3b30;
+}
+
 .mac-settings-card {
   max-width: 720px;
   margin-bottom: 16px;
