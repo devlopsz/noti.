@@ -1280,6 +1280,34 @@ async function handleCloudSession(session, options = {}) {
   await loadCloudSnapshotForCurrentUser();
 }
 
+async function ensureCloudSession() {
+  const client = getSupabaseClient();
+  if (!client) return null;
+
+  const { data, error } = await client.auth.getSession();
+  if (error) throw error;
+
+  const session = data?.session || null;
+  if (!session?.user) {
+    cloudSessionUserId = "";
+    cloudInitialSyncDone = false;
+    setCloudSyncStatus("error", "Sessão expirada. Entre novamente para usar a nuvem.");
+    refreshAccountUi();
+    return null;
+  }
+
+  if (cloudSessionUserId !== session.user.id) {
+    const localUser = upsertLocalUserFromCloudUser(session.user);
+    cloudSessionUserId = localUser.id;
+    currentUserId = localUser.id;
+    localStorage.setItem(CURRENT_USER_KEY, currentUserId);
+    saveUsers({ sync: false });
+    refreshAccountUi();
+  }
+
+  return session;
+}
+
 function upsertLocalUserFromCloudUser(supabaseUser, draft = {}) {
   const metadata = supabaseUser?.user_metadata || {};
   const email = String(supabaseUser?.email || draft.email || "").toLowerCase();
@@ -1402,10 +1430,17 @@ async function saveCloudDataManually() {
   setProfileCloudButtonsBusy(true);
   setCloudSyncStatus("syncing", "Salvando dados na nuvem...");
   try {
-    await saveCloudSnapshotNow({ force: true, manual: true });
+    const session = await ensureCloudSession();
+    if (!session?.user) {
+      showToast("Sessão expirada. Entre novamente.");
+      openAccountModal("login");
+      return;
+    }
+    await saveCloudSnapshotNow({ force: true, manual: true, skipSessionCheck: true });
     showToast("Dados salvos na nuvem");
   } catch (error) {
     console.warn("Salvar dados na nuvem falhou.", error);
+    window.notiLastCloudError = error;
     showToast(getCloudSyncErrorMessage(error));
   } finally {
     setProfileCloudButtonsBusy(false);
@@ -1426,6 +1461,12 @@ async function syncCloudDataManually() {
   setProfileCloudButtonsBusy(true);
   setCloudSyncStatus("syncing", "Baixando dados salvos na nuvem...");
   try {
+    const session = await ensureCloudSession();
+    if (!session?.user) {
+      showToast("Sessão expirada. Entre novamente.");
+      openAccountModal("login");
+      return;
+    }
     const snapshot = await fetchCloudSnapshotForCurrentUser();
     if (!snapshot) {
       setCloudSyncStatus("dirty", "Nenhum dado salvo na nuvem ainda. Clique em Salvar dados no aparelho principal.");
@@ -1437,6 +1478,7 @@ async function syncCloudDataManually() {
     showToast("Dados sincronizados");
   } catch (error) {
     console.warn("Sincronizar dados falhou.", error);
+    window.notiLastCloudError = error;
     showToast(getCloudSyncErrorMessage(error));
   } finally {
     setProfileCloudButtonsBusy(false);
@@ -1447,6 +1489,8 @@ async function syncCloudDataManually() {
 async function fetchCloudSnapshotForCurrentUser() {
   const client = getSupabaseClient();
   if (!client || !cloudSessionUserId) return null;
+  await ensureCloudSession();
+  if (!cloudSessionUserId) return null;
   const { data, error } = await client
     .from(CLOUD_DATA_TABLE)
     .select("user_id,email,profile,app_state,preferences,updated_at,version")
@@ -1467,8 +1511,13 @@ function scheduleCloudSync(message = "Sincronizando...") {
 
 async function saveCloudSnapshotNow(options = {}) {
   const client = getSupabaseClient();
+  if (!client) return false;
+  if (!options.skipSessionCheck) {
+    const session = await ensureCloudSession();
+    if (!session?.user) return false;
+  }
   const user = getCurrentUser();
-  if (!client || !cloudSessionUserId || !user) return false;
+  if (!cloudSessionUserId || !user) return false;
   if (!cloudInitialSyncDone && !options.force) return false;
   if (cloudSyncSaving) {
     cloudSyncQueued = true;
@@ -1493,6 +1542,7 @@ async function saveCloudSnapshotNow(options = {}) {
     setCloudSyncStatus("synced", "Sincronizado com a nuvem.");
     return true;
   } catch (error) {
+    window.notiLastCloudError = error;
     setCloudSyncStatus("error", getCloudSyncErrorMessage(error));
     throw error;
   } finally {
@@ -1535,12 +1585,41 @@ function getProfileStatusText(user) {
 
 function getCloudSyncErrorMessage(error) {
   const code = String(error?.code || "");
+  const status = Number(error?.status || error?.statusCode || error?.response?.status || 0);
   const message = String(error?.message || "");
-  if (code === "42P01" || code === "PGRST205" || /noti_user_data|schema cache|relation/i.test(message)) {
+  const details = String(error?.details || "");
+  const hint = String(error?.hint || "");
+  const combined = [message, details, hint, code].filter(Boolean).join(" ");
+  const normalized = combined.toLowerCase();
+
+  if (!navigator.onLine) return "Sem internet. Alterações salvas neste aparelho.";
+  if (code === "42P01" || code === "PGRST205" || /noti_user_data|schema cache|relation/i.test(combined)) {
     return "Crie a tabela noti_user_data no Supabase para ativar a nuvem.";
   }
-  if (!navigator.onLine) return "Sem internet. Alterações salvas neste aparelho.";
-  return "Não foi possível sincronizar agora. Tentaremos novamente.";
+  if (code === "42P10" || /on conflict|unique constraint|exclusion constraint|primary key/i.test(combined)) {
+    return "A tabela da nuvem precisa da chave user_id. Rode o SQL atualizado do Noti no Supabase.";
+  }
+  if (status === 401 || /jwt|token|unauthorized|auth session missing|session/i.test(normalized)) {
+    return "Sessão expirada. Entre novamente para sincronizar.";
+  }
+  if (status === 403 || code === "42501" || /row-level security|permission denied|violates row-level security|rls/i.test(combined)) {
+    return "Permissão da nuvem negada. Rode o SQL de políticas do Noti no Supabase.";
+  }
+  if (status === 413 || /payload|too large|request entity too large|maximum size/i.test(normalized)) {
+    return "Dados grandes demais para salvar agora. Remova anexos muito pesados ou divida as imagens.";
+  }
+  if (/invalid input syntax for type uuid|foreign key|violates foreign key/i.test(combined)) {
+    return "A conta da nuvem ficou inconsistente. Saia e entre novamente.";
+  }
+
+  const readable = formatCloudErrorDetail(message || details || hint);
+  return readable ? `Erro da nuvem: ${readable}` : "Não foi possível sincronizar agora. Tentaremos novamente.";
+}
+
+function formatCloudErrorDetail(text) {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  if (!clean) return "";
+  return clean.length > 150 ? `${clean.slice(0, 147)}...` : clean;
 }
 
 function getAuthErrorMessage(error) {

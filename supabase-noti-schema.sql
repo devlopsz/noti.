@@ -12,6 +12,29 @@ create table if not exists public.noti_user_data (
   updated_at timestamptz not null default now()
 );
 
+alter table public.noti_user_data
+  add column if not exists user_id uuid,
+  add column if not exists email text,
+  add column if not exists profile jsonb not null default '{}'::jsonb,
+  add column if not exists app_state jsonb not null default '{"folders":[],"notes":[]}'::jsonb,
+  add column if not exists preferences jsonb not null default '{}'::jsonb,
+  add column if not exists version integer not null default 1,
+  add column if not exists updated_at timestamptz not null default now();
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.noti_user_data'::regclass
+      and contype = 'p'
+  ) then
+    alter table public.noti_user_data
+      alter column user_id set not null,
+      add constraint noti_user_data_pkey primary key (user_id);
+  end if;
+end $$;
+
 alter table public.noti_user_data enable row level security;
 
 drop policy if exists "noti read own data" on public.noti_user_data;
@@ -44,4 +67,5 @@ for delete
 to authenticated
 using (auth.uid() = user_id);
 
+grant usage on schema public to authenticated;
 grant select, insert, update, delete on public.noti_user_data to authenticated;
