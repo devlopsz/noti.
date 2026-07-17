@@ -9,6 +9,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const CLOUD_DATA_TABLE = "noti_user_data";
 const CLOUD_CHUNK_TABLE = "noti_user_data_chunks";
 const CLOUD_CHUNK_MARKER = "__notiChunkedAppState";
+const CLOUD_PROFILE_PHOTO_MARKER = "__notiChunkedProfilePhoto";
 const CLOUD_CHUNK_MIN_LENGTH = 90000;
 const CLOUD_CHUNK_SIZE = 45000;
 const CLOUD_CHUNK_BATCH_SIZE = 1;
@@ -1500,6 +1501,9 @@ async function fetchCloudSnapshotForCurrentUser(options = {}) {
   if (isChunkedCloudAppState(data.app_state)) {
     data.app_state = await fetchCloudStateChunks(client, cloudSessionUserId, data.app_state);
   }
+  if (isChunkedCloudProfilePhoto(data.profile?.photo)) {
+    data.profile.photo = await fetchCloudProfilePhotoChunks(client, cloudSessionUserId, data.profile.photo);
+  }
   return data;
 }
 
@@ -1537,11 +1541,13 @@ async function saveCloudSnapshotNow(options = {}) {
     if (!isChunkedCloudAppState(appStateForCloud)) {
       await clearCloudStateChunks(client, cloudSessionUserId);
     }
+    const profile = buildCloudProfile(user);
+    profile.photo = await prepareCloudProfilePhotoForCloud(client, cloudSessionUserId, profile.photo);
 
     const payload = {
       user_id: cloudSessionUserId,
       email: user.email,
-      profile: buildCloudProfile(user),
+      profile,
       app_state: appStateForCloud,
       preferences: clonePlainData(preferences),
       version: BACKUP_VERSION,
@@ -1568,6 +1574,10 @@ async function saveCloudSnapshotNow(options = {}) {
 
 function isChunkedCloudAppState(value) {
   return Boolean(value && typeof value === "object" && value[CLOUD_CHUNK_MARKER]);
+}
+
+function isChunkedCloudProfilePhoto(value) {
+  return Boolean(value && typeof value === "object" && value[CLOUD_PROFILE_PHOTO_MARKER]);
 }
 
 function splitCloudText(value) {
@@ -1615,7 +1625,8 @@ async function clearCloudStateChunks(client, userId) {
   const { error } = await runCloudRequest(() => client
     .from(CLOUD_CHUNK_TABLE)
     .delete()
-    .eq("user_id", userId));
+    .eq("user_id", userId)
+    .gte("chunk_index", 0));
   if (error && !isCloudMissingChunksError(error)) throw error;
 }
 
@@ -1625,6 +1636,7 @@ async function fetchCloudStateChunks(client, userId, marker) {
     .from(CLOUD_CHUNK_TABLE)
     .select("chunk_index,chunk_data")
     .eq("user_id", userId)
+    .gte("chunk_index", 0)
     .order("chunk_index", { ascending: true }));
   if (error) throw error;
 
@@ -1639,6 +1651,82 @@ async function fetchCloudStateChunks(client, userId, marker) {
     .map((chunk) => String(chunk.chunk_data || ""))
     .join("");
   return JSON.parse(orderedText || "{}");
+}
+
+async function prepareCloudProfilePhotoForCloud(client, userId, photo) {
+  const photoText = String(photo || "");
+  if (!photoText) {
+    await clearCloudProfilePhotoChunks(client, userId);
+    return "";
+  }
+  if (photoText.length <= CLOUD_CHUNK_MIN_LENGTH) {
+    await clearCloudProfilePhotoChunks(client, userId);
+    return photoText;
+  }
+  return saveCloudProfilePhotoChunks(client, userId, photoText);
+}
+
+async function saveCloudProfilePhotoChunks(client, userId, photoText) {
+  const chunks = splitCloudText(photoText);
+  const updatedAt = new Date().toISOString();
+  for (let index = 0; index < chunks.length; index += CLOUD_CHUNK_BATCH_SIZE) {
+    const rows = chunks.slice(index, index + CLOUD_CHUNK_BATCH_SIZE).map((chunk, offset) => ({
+      user_id: userId,
+      chunk_index: -1 * (index + offset + 1),
+      chunk_data: chunk,
+      updated_at: updatedAt,
+    }));
+    const { error } = await runCloudRequest(() => client
+      .from(CLOUD_CHUNK_TABLE)
+      .upsert(rows, { onConflict: "user_id,chunk_index" }));
+    if (error) throw error;
+  }
+
+  const { error: cleanupError } = await runCloudRequest(() => client
+    .from(CLOUD_CHUNK_TABLE)
+    .delete()
+    .eq("user_id", userId)
+    .lt("chunk_index", -chunks.length));
+  if (cleanupError) throw cleanupError;
+
+  return {
+    [CLOUD_PROFILE_PHOTO_MARKER]: true,
+    chunkCount: chunks.length,
+    chunkSize: CLOUD_CHUNK_SIZE,
+    textLength: photoText.length,
+    updatedAt,
+  };
+}
+
+async function clearCloudProfilePhotoChunks(client, userId) {
+  const { error } = await runCloudRequest(() => client
+    .from(CLOUD_CHUNK_TABLE)
+    .delete()
+    .eq("user_id", userId)
+    .lt("chunk_index", 0));
+  if (error && !isCloudMissingChunksError(error)) throw error;
+}
+
+async function fetchCloudProfilePhotoChunks(client, userId, marker) {
+  const expectedCount = Math.max(0, Number(marker?.chunkCount || 0));
+  const { data, error } = await runCloudRequest(() => client
+    .from(CLOUD_CHUNK_TABLE)
+    .select("chunk_index,chunk_data")
+    .eq("user_id", userId)
+    .lt("chunk_index", 0)
+    .order("chunk_index", { ascending: false }));
+  if (error) throw error;
+
+  const chunks = Array.isArray(data) ? data : [];
+  if (expectedCount && chunks.length < expectedCount) {
+    throw new Error("Foto de perfil em nuvem incompleta. Clique em Salvar dados novamente no aparelho principal.");
+  }
+
+  return chunks
+    .slice(0, expectedCount || chunks.length)
+    .sort((first, second) => normalizeNumber(second.chunk_index, 0) - normalizeNumber(first.chunk_index, 0))
+    .map((chunk) => String(chunk.chunk_data || ""))
+    .join("");
 }
 
 function isCloudMissingChunksError(error) {
@@ -1736,7 +1824,7 @@ function getCloudSyncErrorMessage(error) {
     if (window.location.protocol === "file:") {
       return "Abra pelo GitHub Pages para sincronizar na nuvem. O arquivo local pode bloquear o Supabase.";
     }
-    return "Falha de conexão com a nuvem. Recarregue, desative bloqueadores para Supabase e tente salvar novamente.";
+    return "A conexão caiu durante o envio para a nuvem. Recarregue e tente salvar novamente.";
   }
   if (/invalid input syntax for type uuid|foreign key|violates foreign key/i.test(combined)) {
     return "A conta da nuvem ficou inconsistente. Saia e entre novamente.";
