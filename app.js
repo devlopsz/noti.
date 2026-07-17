@@ -1,29 +1,9 @@
-﻿const STORAGE_KEY = "checklist-os-state-v1";
+const STORAGE_KEY = "checklist-os-state-v1";
 const THEME_KEY = "checklist-os-theme";
 const USER_STORE_KEY = "noti-users-v1";
 const CURRENT_USER_KEY = "noti-current-user-v1";
 const PREFS_KEY = "noti-preferences-v1";
 const FIRST_VISIT_KEY = "noti-first-visit-seen-v1";
-const SUPABASE_URL = "https://jzryqqmaumsuxmfgfmtq.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6cnlxcW1hdW1zdXhtZmdmbXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyMTg2MjMsImV4cCI6MjA5OTc5NDYyM30.SzRZ8a64UZrtcXEdtMNfCMUzEgWrPCZl6LMUN18wvo4";
-const AUTH_REDIRECT_URL = "https://devlopsz.github.io/noti/";
-const CLOUD_BACKUP_BUCKET = "noti-backups";
-const CLOUD_BACKUP_FILE_NAME = "noti-backup.json";
-const CLOUD_RESUMABLE_UPLOAD_THRESHOLD = 6 * 1024 * 1024;
-const CLOUD_MAX_BACKUP_BYTES = 50 * 1024 * 1024;
-const CLOUD_DATA_TABLE = "noti_user_data";
-const CLOUD_CHUNK_TABLE = "noti_user_data_chunks";
-const CLOUD_SNAPSHOT_TABLE = "noti_sync_snapshots";
-const CLOUD_SNAPSHOT_CHUNK_TABLE = "noti_sync_chunks";
-const CLOUD_SNAPSHOT_CHUNK_SIZE = 120000;
-const CLOUD_SNAPSHOT_UPLOAD_BATCH = 1;
-const CLOUD_CHUNK_MARKER = "__notiChunkedAppState";
-const CLOUD_PROFILE_PHOTO_MARKER = "__notiChunkedProfilePhoto";
-const CLOUD_CHUNK_MIN_LENGTH = 90000;
-const CLOUD_CHUNK_SIZE = 45000;
-const CLOUD_CHUNK_BATCH_SIZE = 1;
-const CLOUD_REQUEST_RETRIES = 4;
-const CLOUD_SYNC_DEBOUNCE_MS = 1800;
 const BACKUP_TYPE = "noti-backup";
 const BACKUP_VERSION = 1;
 const MAX_ATTACHMENT_BYTES = 2.5 * 1024 * 1024;
@@ -410,13 +390,6 @@ let passTimeScreen = "";
 let ticTacToeGame = createTicTacToeState();
 let chessGame = createChessState();
 let notisualGame = createNotisualState();
-let supabaseClient = null;
-let cloudSessionUserId = "";
-let cloudInitialSyncDone = false;
-let cloudSyncTimer = 0;
-let cloudSyncSaving = false;
-let cloudSyncQueued = false;
-let cloudSyncStatus = { tone: "offline", text: "Entre para sincronizar em nuvem." };
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -569,7 +542,6 @@ const elements = {
   signupForm: $("#signupForm"),
   loginIdentifierInput: $("#loginIdentifierInput"),
   loginPasswordInput: $("#loginPasswordInput"),
-  resendConfirmationButton: $("#resendConfirmationButton"),
   signupPhotoInput: $("#signupPhotoInput"),
   signupPhotoPreview: $("#signupPhotoPreview"),
   signupNameInput: $("#signupNameInput"),
@@ -598,8 +570,6 @@ const elements = {
   settingsCountrySelect: $("#settingsCountrySelect"),
   profileStatus: $("#profileStatus"),
   profileLoginButton: $("#profileLoginButton"),
-  profileSaveCloudButton: $("#profileSaveCloudButton"),
-  profileSyncCloudButton: $("#profileSyncCloudButton"),
   saveProfileButton: $("#saveProfileButton"),
   profileEditDialog: $("#profileEditDialog"),
   cancelProfileEditButton: $("#cancelProfileEditButton"),
@@ -654,10 +624,6 @@ function init() {
   render();
   setupAutoTooltips();
   setupPagesUpdateChecker();
-  initializeCloudAuth();
-  window.addEventListener("online", () => {
-    if (cloudSessionUserId) setCloudSyncStatus("dirty", "Conectado. Clique em Salvar dados para enviar alterações.");
-  });
   localStorage.setItem(FIRST_VISIT_KEY, "true");
 }
 
@@ -689,7 +655,6 @@ function bindEvents() {
   elements.signupTabButton.addEventListener("click", () => setActiveAccountPanel("signup"));
   elements.loginForm.addEventListener("submit", handleLogin);
   elements.signupForm.addEventListener("submit", handleSignup);
-  elements.resendConfirmationButton?.addEventListener("click", resendSignupConfirmation);
   elements.signupUsernameInput.addEventListener("input", () => keepUsernamePrefix(elements.signupUsernameInput));
   elements.signupUsernameInput.addEventListener("blur", () => normalizeUsernameInput(elements.signupUsernameInput));
   elements.signupPhotoInput.addEventListener("change", handleSignupPhoto);
@@ -697,8 +662,6 @@ function bindEvents() {
     button.addEventListener("click", () => setActiveSettingsTab(button.dataset.settingsTab));
   });
   elements.profileLoginButton.addEventListener("click", openProfileAccountEntry);
-  elements.profileSaveCloudButton?.addEventListener("click", saveCloudDataManually);
-  elements.profileSyncCloudButton?.addEventListener("click", syncCloudDataManually);
   elements.editProfileButton.addEventListener("click", openProfileEditDialog);
   elements.cancelProfileEditButton.addEventListener("click", closeProfileEditDialog);
   elements.saveProfileButton.addEventListener("click", saveProfileSettings);
@@ -1234,1076 +1197,19 @@ function normalizeState(rawState) {
   };
 }
 
-function saveState(options = {}) {
+function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  if (options.sync !== false) markCloudDataDirty("Alterações locais salvas. Clique em Salvar dados para enviar à nuvem.");
 }
 
-function getSupabaseClient() {
-  if (supabaseClient) return supabaseClient;
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !window.supabase?.createClient) {
-    return null;
-  }
-  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
-  });
-  return supabaseClient;
+function getProfileStatusText(user) {
+  return user
+    ? "Conta local ativa neste navegador."
+    : "Entre para acessar seu perfil local neste navegador.";
 }
 
-async function initializeCloudAuth() {
-  const client = getSupabaseClient();
-  if (!client) {
-    setCloudSyncStatus("offline", "Sincronização local ativa neste navegador.");
-    return;
-  }
-
-  setCloudSyncStatus("idle", "Entre para sincronizar notas, temas e pontos em nuvem.");
-  try {
-    const { data, error } = await client.auth.getSession();
-    if (error) throw error;
-    await handleCloudSession(data?.session || null, { initial: true });
-    handleAuthRedirectFeedback(data?.session || null);
-    client.auth.onAuthStateChange((_event, session) => {
-      window.setTimeout(() => handleCloudSession(session, { event: _event }), 0);
-    });
-  } catch (error) {
-    console.warn("Não foi possível iniciar o Supabase.", error);
-    setCloudSyncStatus("error", "Não foi possível conectar à nuvem agora.");
-  }
-}
-
-function handleAuthRedirectFeedback(session) {
-  const hashParams = new URLSearchParams(String(window.location.hash || "").replace(/^#/, ""));
-  const searchParams = new URLSearchParams(window.location.search || "");
-  const params = hashParams.has("error") || hashParams.has("error_code") ? hashParams : searchParams;
-  const errorCode = String(params.get("error_code") || "");
-  const errorDescription = String(params.get("error_description") || "").replace(/\+/g, " ");
-  if (errorCode || params.get("error")) {
-    const message = errorCode === "otp_expired"
-      ? "O link de confirmação expirou. Entre com o e-mail e clique em Reenviar e-mail."
-      : (errorDescription || "Não foi possível confirmar o e-mail.");
-    showToast(message);
-    openAccountModal("login");
-    window.history.replaceState({}, document.title, window.location.pathname);
-    return;
-  }
-  if (session && /access_token|refresh_token|type=signup|code=/i.test(`${window.location.hash || ""}${window.location.search || ""}`)) {
-    showToast("E-mail confirmado. Sua conta está conectada.");
-    window.history.replaceState({}, document.title, window.location.pathname);
-  }
-}
-
-async function handleCloudSession(session, options = {}) {
-  const supabaseUser = session?.user || null;
-  if (!supabaseUser) {
-    if (cloudSessionUserId && options.event === "SIGNED_OUT") {
-      clearCurrentSessionLocally();
-    }
-    cloudSessionUserId = "";
-    cloudInitialSyncDone = false;
-    setCloudSyncStatus("offline", "Entre para sincronizar em nuvem.");
-    return;
-  }
-
-  if (cloudSessionUserId === supabaseUser.id && cloudInitialSyncDone && options.event === "INITIAL_SESSION") return;
-
-  const localUser = upsertLocalUserFromCloudUser(supabaseUser);
-  cloudSessionUserId = localUser.id;
-  currentUserId = localUser.id;
-  localStorage.setItem(CURRENT_USER_KEY, currentUserId);
-  saveUsers({ sync: false });
-  refreshAccountUi();
-  setCloudSyncStatus("syncing", "Sincronizando seus dados...");
-
-  await loadCloudSnapshotForCurrentUser();
-}
-
-async function ensureCloudSession() {
-  const client = getSupabaseClient();
-  if (!client) return null;
-
-  const { data, error } = await client.auth.getSession();
-  if (error) throw error;
-
-  const session = data?.session || null;
-  if (!session?.user) {
-    cloudSessionUserId = "";
-    cloudInitialSyncDone = false;
-    setCloudSyncStatus("error", "Sessão expirada. Entre novamente para usar a nuvem.");
-    refreshAccountUi();
-    return null;
-  }
-
-  if (cloudSessionUserId !== session.user.id) {
-    const localUser = upsertLocalUserFromCloudUser(session.user);
-    cloudSessionUserId = localUser.id;
-    currentUserId = localUser.id;
-    localStorage.setItem(CURRENT_USER_KEY, currentUserId);
-    saveUsers({ sync: false });
-    refreshAccountUi();
-  }
-
-  return session;
-}
-
-function upsertLocalUserFromCloudUser(supabaseUser, draft = {}) {
-  const metadata = supabaseUser?.user_metadata || {};
-  const email = String(supabaseUser?.email || draft.email || "").toLowerCase();
-  let user = users.find((candidate) => candidate.id === supabaseUser.id)
-    || users.find((candidate) => email && candidate.email === email)
-    || null;
-  const now = Date.now();
-  const next = {
-    id: supabaseUser.id,
-    name: String(metadata.name || metadata.full_name || draft.name || user?.name || "").trim() || "Usuário Noti",
-    username: normalizeUsername(metadata.username || draft.username || user?.username || email.split("@")[0] || "usuario"),
-    email,
-    phone: normalizePhoneNumber(metadata.phone || draft.phone || user?.phone || ""),
-    phoneCountry: getPhoneCountry(metadata.phoneCountry || draft.phoneCountry || user?.phoneCountry || "BR").code,
-    password: user?.password || "",
-    photo: typeof metadata.photo === "string" ? metadata.photo : (draft.photo || user?.photo || ""),
-    timeGameScore: Math.max(normalizeNumber(user?.timeGameScore, 0), normalizeNumber(draft.timeGameScore, 0)),
-    notisualScore: Math.max(normalizeNumber(user?.notisualScore, 0), normalizeNumber(draft.notisualScore, 0)),
-    createdAt: Number.isFinite(user?.createdAt) ? user.createdAt : now,
-    updatedAt: now,
-  };
-
-  if (user) Object.assign(user, next);
-  else {
-    user = next;
-    users.push(user);
-  }
-  users = users.filter((candidate, index) => {
-    if (candidate === user) return true;
-    if (candidate.id === user.id || (user.email && candidate.email === user.email)) return false;
-    return users.indexOf(candidate) === index;
-  });
-  return user;
-}
-
-async function loadCloudSnapshotForCurrentUser() {
-  if (!cloudSessionUserId) return;
-
-  try {
-    const data = await fetchCloudSnapshotForCurrentUser({ skipSessionCheck: true });
-
-    cloudInitialSyncDone = true;
-    if (!data) {
-      setCloudSyncStatus("dirty", "Nenhum dado salvo na nuvem. Clique em Salvar dados neste aparelho.");
-      return;
-    }
-
-    applyCloudSnapshot(data, { mergeLocal: true });
-    setCloudSyncStatus("synced", "Últimos dados salvos carregados da nuvem.");
-  } catch (error) {
-    console.warn("Não foi possível carregar dados da nuvem.", error);
-    cloudInitialSyncDone = true;
-    setCloudSyncStatus("error", getCloudSyncErrorMessage(error));
-  }
-}
-
-function applyCloudSnapshot(snapshot, options = {}) {
-  const cloudState = normalizeState(snapshot?.app_state || {});
-  const cloudPreferences = normalizePreferencesData(snapshot?.preferences || {}, preferences);
-  const user = getCurrentUser();
-  if (user && snapshot?.profile && typeof snapshot.profile === "object") {
-    const profile = snapshot.profile;
-    user.name = String(profile.name || user.name || "").trim() || "Usuário Noti";
-    user.username = normalizeUsername(profile.username || user.username);
-    user.email = String(snapshot.email || profile.email || user.email || "").toLowerCase();
-    user.phone = normalizePhoneNumber(profile.phone || user.phone || "");
-    user.phoneCountry = getPhoneCountry(profile.phoneCountry || user.phoneCountry || "BR").code;
-    user.photo = typeof profile.photo === "string" ? profile.photo : user.photo;
-    user.timeGameScore = Math.max(normalizeNumber(user.timeGameScore, 0), normalizeNumber(profile.timeGameScore, 0));
-    user.notisualScore = Math.max(normalizeNumber(user.notisualScore, 0), normalizeNumber(profile.notisualScore, 0));
-    user.updatedAt = Date.now();
-  }
-
-  const shouldMergeLocal = options.mergeLocal !== false;
-  const hasLocalStateNow = Boolean(localStorage.getItem(STORAGE_KEY));
-  const nextState = shouldMergeLocal && hasLocalStateNow && state.notes.length
-    ? buildBackupMerge(cloudState).state
-    : cloudState;
-
-  state.folders = nextState.folders;
-  state.notes = nextState.notes;
-  preferences = cloudPreferences;
-  currentView = "all";
-  selectedNoteId = null;
-
-  saveUsers({ sync: false });
-  saveState({ sync: false });
-  savePreferences({ sync: false });
-  localStorage.setItem(THEME_KEY, preferences.theme);
-  applyTheme(preferences.theme);
-  applyPreferences();
-  render();
-}
-
-function markCloudDataDirty(message) {
-  const user = getCurrentUser();
-  if (!user || cloudSessionUserId !== user.id || !cloudInitialSyncDone) return;
-  setCloudSyncStatus("dirty", message || "Dados alterados neste aparelho. Clique em Salvar dados.");
-}
-
-function canUseCloudActions() {
-  const user = getCurrentUser();
-  return Boolean(user && cloudSessionUserId === user.id && getSupabaseClient());
-}
-
-async function saveCloudDataManually() {
-  if (!canUseCloudActions()) {
-    showToast("Entre com sua conta para salvar na nuvem");
-    openAccountModal("login");
-    return;
-  }
-
-  setProfileCloudButtonsBusy(true);
-  setCloudSyncStatus("syncing", "Salvando dados na nuvem...");
-  try {
-    const session = await ensureCloudSession();
-    if (!session?.user) {
-      showToast("Sessão expirada. Entre novamente.");
-      openAccountModal("login");
-      return;
-    }
-    await saveCloudSnapshotNow({ force: true, manual: true, skipSessionCheck: true });
-    showToast("Dados salvos na nuvem");
-  } catch (error) {
-    console.warn("Salvar dados na nuvem falhou.", error);
-    window.notiLastCloudError = error;
-    showToast(getCloudSyncErrorMessage(error));
-  } finally {
-    setProfileCloudButtonsBusy(false);
-    renderSettingsIfOpen();
-  }
-}
-
-async function syncCloudDataManually() {
-  if (!canUseCloudActions()) {
-    showToast("Entre com sua conta para sincronizar");
-    openAccountModal("login");
-    return;
-  }
-
-  const shouldSync = confirm("Sincronizar com a última versão salva na nuvem? Os dados deste aparelho serão atualizados pelo último Salvar dados.");
-  if (!shouldSync) return;
-
-  setProfileCloudButtonsBusy(true);
-  setCloudSyncStatus("syncing", "Baixando dados salvos na nuvem...");
-  try {
-    const session = await ensureCloudSession();
-    if (!session?.user) {
-      showToast("Sessão expirada. Entre novamente.");
-      openAccountModal("login");
-      return;
-    }
-    const snapshot = await fetchCloudSnapshotForCurrentUser();
-    if (!snapshot) {
-      setCloudSyncStatus("dirty", "Nenhum dado salvo na nuvem ainda. Clique em Salvar dados no aparelho principal.");
-      showToast("Nenhum dado salvo na nuvem");
-      return;
-    }
-    applyCloudSnapshot(snapshot, { mergeLocal: false });
-    setCloudSyncStatus("synced", "Dados sincronizados com a última versão salva.");
-    showToast("Dados sincronizados");
-  } catch (error) {
-    console.warn("Sincronizar dados falhou.", error);
-    window.notiLastCloudError = error;
-    showToast(getCloudSyncErrorMessage(error));
-  } finally {
-    setProfileCloudButtonsBusy(false);
-    renderSettingsIfOpen();
-  }
-}
-
-async function fetchCloudSnapshotForCurrentUser(options = {}) {
-  const client = getSupabaseClient();
-  if (!client || !cloudSessionUserId) return null;
-  const session = options.skipSessionCheck
-    ? (await client.auth.getSession()).data?.session
-    : await ensureCloudSession();
-  if (!session?.user || !cloudSessionUserId) return null;
-
-  const snapshot = await fetchCloudSnapshotV2(client, cloudSessionUserId);
-  if (snapshot) return snapshot;
-
-  return fetchLegacyCloudSnapshot(client, cloudSessionUserId);
-}
-
-async function fetchLegacyCloudSnapshot(client, userId) {
-  const { data, error } = await runCloudRequest(() => client
-    .from(CLOUD_DATA_TABLE)
-    .select("user_id,email,profile,app_state,preferences,updated_at,version")
-    .eq("user_id", userId)
-    .maybeSingle());
-  if (error) {
-    if (isCloudMissingLegacySchemaError(error)) return null;
-    throw withCloudStage(error, "a leitura do backup antigo");
-  }
-  if (!data) return null;
-  if (isChunkedCloudAppState(data.app_state)) {
-    data.app_state = await fetchCloudStateChunks(client, userId, data.app_state);
-  }
-  if (isChunkedCloudProfilePhoto(data.profile?.photo)) {
-    data.profile.photo = await fetchCloudProfilePhotoChunks(client, userId, data.profile.photo);
-  }
-  return data;
-}
-
-function setProfileCloudButtonsBusy(busy) {
-  if (elements.profileSaveCloudButton) elements.profileSaveCloudButton.disabled = Boolean(busy);
-  if (elements.profileSyncCloudButton) elements.profileSyncCloudButton.disabled = Boolean(busy);
-}
-
-function scheduleCloudSync(message = "Sincronizando...") {
-  markCloudDataDirty(message || "Dados alterados neste aparelho. Clique em Salvar dados.");
-}
-
-async function saveCloudSnapshotNow(options = {}) {
-  const client = getSupabaseClient();
-  if (!client) return false;
-  let session = null;
-  if (!options.skipSessionCheck) {
-    session = await ensureCloudSession();
-    if (!session?.user) return false;
-  } else {
-    const { data, error } = await client.auth.getSession();
-    if (error) throw error;
-    session = data?.session || null;
-    if (!session?.user) return false;
-  }
-  const user = getCurrentUser();
-  if (!cloudSessionUserId || !user) return false;
-  if (!cloudInitialSyncDone && !options.force) return false;
-  if (cloudSyncSaving) {
-    cloudSyncQueued = true;
-    return false;
-  }
-
-  cloudSyncSaving = true;
-  try {
-    const payload = createNotesBackupPayload();
-    const payloadText = JSON.stringify(payload, null, 2);
-    const backupFile = new File(
-      [payloadText],
-      CLOUD_BACKUP_FILE_NAME,
-      { type: "application/json", lastModified: 0 }
-    );
-    if (backupFile.size > CLOUD_MAX_BACKUP_BYTES) {
-      const error = new Error(`O backup possui ${formatFileSize(backupFile.size)} e ultrapassa o limite de 50 MB.`);
-      error.status = 413;
-      throw error;
-    }
-
-    setCloudSyncStatus("syncing", `Enviando ${formatFileSize(backupFile.size)} em blocos seguros...`);
-    await saveCloudSnapshotV2(client, cloudSessionUserId, payload);
-
-    setCloudSyncStatus("synced", `Backup salvo na nuvem: ${formatFileSize(backupFile.size)}.`);
-    return true;
-  } catch (error) {
-    window.notiLastCloudError = error;
-    setCloudSyncStatus("error", getCloudSyncErrorMessage(error));
-    throw error;
-  } finally {
-    cloudSyncSaving = false;
-    if (cloudSyncQueued) {
-      cloudSyncQueued = false;
-      scheduleCloudSync("Finalizando sincronização...");
-    }
-  }
-}
-
-function getCloudBackupPath(userId) {
-  return `${String(userId || "").trim()}/${CLOUD_BACKUP_FILE_NAME}`;
-}
-
-function getCloudStorageDirectBaseUrl() {
-  const projectId = new URL(SUPABASE_URL).hostname.split(".")[0];
-  return `https://${projectId}.storage.supabase.co/storage/v1`;
-}
-
-function getCloudStorageObjectUrl(filePath, options = {}) {
-  const baseUrl = options.direct
-    ? getCloudStorageDirectBaseUrl()
-    : `${SUPABASE_URL.replace(/\/$/, "")}/storage/v1`;
-  const encodedPath = String(filePath || "")
-    .split("/")
-    .map((part) => encodeURIComponent(part))
-    .join("/");
-  const route = options.authenticated ? "object/authenticated" : "object";
-  return `${baseUrl}/${route}/${encodeURIComponent(CLOUD_BACKUP_BUCKET)}/${encodedPath}`;
-}
-
-function getCloudStorageRequestHeaders(session, extra = {}) {
+function buildBackupProfile(user) {
   return {
-    apikey: SUPABASE_ANON_KEY,
-    authorization: `Bearer ${session.access_token}`,
-    ...extra,
-  };
-}
-
-async function createCloudHttpError(response, fallbackMessage) {
-  let responseText = "";
-  try {
-    responseText = await response.text();
-  } catch (_error) {
-    responseText = "";
-  }
-
-  let payload = null;
-  try {
-    payload = responseText ? JSON.parse(responseText) : null;
-  } catch (_error) {
-    payload = null;
-  }
-
-  const message = String(
-    payload?.message
-    || payload?.error
-    || responseText
-    || fallbackMessage
-    || `A nuvem respondeu ${response.status}.`
-  );
-  const error = new Error(message);
-  error.name = "CloudStorageHttpError";
-  error.status = response.status;
-  error.statusCode = response.status;
-  error.code = payload?.statusCode || payload?.code || "";
-  error.details = payload?.error || "";
-  return error;
-}
-
-async function downloadCloudBackupDirect(session, filePath) {
-  const routes = [
-    getCloudStorageObjectUrl(filePath, { direct: true, authenticated: true }),
-    getCloudStorageObjectUrl(filePath, { direct: true }),
-  ];
-  let lastError = null;
-
-  for (const url of routes) {
-    try {
-      const response = await runCloudRequest(() => fetch(url, {
-        method: "GET",
-        headers: getCloudStorageRequestHeaders(session),
-        cache: "no-store",
-      }), 1);
-      if (!response.ok) {
-        const error = await createCloudHttpError(response, "Não foi possível baixar o backup.");
-        lastError = error;
-        continue;
-      }
-      return await response.blob();
-    } catch (error) {
-      lastError = error;
-      if (!isTransientCloudFetchError(error) && !isCloudBackupNotFoundError(error)) throw error;
-    }
-  }
-
-  throw withCloudStage(lastError || new Error("Falha na rota direta do backup."), "o download direto do arquivo de backup");
-}
-
-async function uploadCloudBackupStandard(client, filePath, backupFile) {
-  const { error } = await runCloudRequest(() => client.storage
-    .from(CLOUD_BACKUP_BUCKET)
-    .upload(filePath, backupFile, {
-      cacheControl: "0",
-      contentType: "application/json",
-      upsert: true,
-    }), 2);
-  if (error) throw withCloudStage(error, "o envio do arquivo de backup");
-}
-
-async function uploadCloudBackupDirectStandard(session, filePath, backupFile) {
-  const formData = new FormData();
-  formData.append("cacheControl", "0");
-  formData.append("", backupFile);
-  const response = await runCloudRequest(() => fetch(
-    getCloudStorageObjectUrl(filePath, { direct: true }),
-    {
-      method: "POST",
-      headers: getCloudStorageRequestHeaders(session, { "x-upsert": "true" }),
-      body: formData,
-    }
-  ), 1);
-  if (!response.ok) {
-    throw withCloudStage(
-      await createCloudHttpError(response, "Não foi possível enviar o backup pela rota direta."),
-      "o envio direto do arquivo de backup"
-    );
-  }
-}
-
-async function uploadCloudBackup(client, session, filePath, backupFile) {
-  const attempts = [];
-  const shouldPreferResumable = backupFile.size > CLOUD_RESUMABLE_UPLOAD_THRESHOLD;
-  const canResume = Boolean(window.tus?.Upload);
-
-  if (!shouldPreferResumable) {
-    try {
-      await uploadCloudBackupStandard(client, filePath, backupFile);
-      return;
-    } catch (error) {
-      attempts.push({ method: "padrão", error });
-      if (!isTransientCloudFetchError(error) && !isCloudPayloadError(error)) throw error;
-    }
-
-    try {
-      setCloudSyncStatus("syncing", "Tentando a rota direta da nuvem...");
-      await uploadCloudBackupDirectStandard(session, filePath, backupFile);
-      return;
-    } catch (error) {
-      attempts.push({ method: "direto", error });
-      if (!isTransientCloudFetchError(error) && !isCloudPayloadError(error)) throw error;
-    }
-  }
-
-  if (canResume) {
-    const endpoints = getCloudResumableUploadEndpoints();
-    for (let index = 0; index < endpoints.length; index++) {
-      const endpoint = endpoints[index];
-      try {
-        setCloudSyncStatus("syncing", index === 0
-          ? "Iniciando envio retomável..."
-          : "Tentando a rota alternativa da nuvem...");
-        await uploadCloudBackupResumable(session, filePath, backupFile, endpoint);
-        return;
-      } catch (error) {
-        attempts.push({ method: index === 0 ? "retomável direto" : "retomável alternativo", error });
-      }
-    }
-  } else {
-    attempts.push({ method: "retomável", error: new Error("Cliente de envio retomável indisponível.") });
-  }
-
-  if (shouldPreferResumable) {
-    try {
-      setCloudSyncStatus("syncing", "Tentando um envio compatível...");
-      await uploadCloudBackupStandard(client, filePath, backupFile);
-      return;
-    } catch (error) {
-      attempts.push({ method: "padrão", error });
-    }
-
-    try {
-      setCloudSyncStatus("syncing", "Tentando a rota direta compatível...");
-      await uploadCloudBackupDirectStandard(session, filePath, backupFile);
-      return;
-    } catch (error) {
-      attempts.push({ method: "direto", error });
-    }
-  }
-
-  throw createCloudUploadError(attempts, backupFile.size);
-}
-
-function getCloudResumableUploadEndpoints() {
-  const projectId = new URL(SUPABASE_URL).hostname.split(".")[0];
-  return [
-    `https://${projectId}.storage.supabase.co/storage/v1/upload/resumable`,
-    `${SUPABASE_URL.replace(/\/$/, "")}/storage/v1/upload/resumable`,
-  ];
-}
-
-function uploadCloudBackupResumable(session, filePath, backupFile, endpoint) {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const upload = new window.tus.Upload(backupFile, {
-      endpoint,
-      retryDelays: [0, 3000, 5000, 10000, 20000],
-      headers: {
-        authorization: `Bearer ${session.access_token}`,
-        apikey: SUPABASE_ANON_KEY,
-        "x-upsert": "true",
-      },
-      uploadDataDuringCreation: true,
-      removeFingerprintOnSuccess: true,
-      chunkSize: 6 * 1024 * 1024,
-      metadata: {
-        bucketName: CLOUD_BACKUP_BUCKET,
-        objectName: filePath,
-        contentType: "application/json",
-        cacheControl: "0",
-      },
-      onProgress(bytesUploaded, bytesTotal) {
-        const percent = bytesTotal ? Math.round((bytesUploaded / bytesTotal) * 100) : 0;
-        setCloudSyncStatus("syncing", `Enviando backup: ${percent}%.`);
-      },
-      onError(error) {
-        if (settled) return;
-        settled = true;
-        reject(withCloudStage(error, "o envio retomável do arquivo de backup"));
-      },
-      onSuccess() {
-        if (settled) return;
-        settled = true;
-        resolve(true);
-      },
-    });
-
-    upload.findPreviousUploads()
-      .then((previousUploads) => {
-        if (previousUploads.length) upload.resumeFromPreviousUpload(previousUploads[0]);
-        upload.start();
-      })
-      .catch(() => upload.start());
-  });
-}
-
-function createCloudUploadError(attempts, fileSize, stage = "o envio do arquivo de backup") {
-  const entries = attempts.filter((attempt) => attempt?.error);
-  const lastError = entries[entries.length - 1]?.error || new Error("Falha no envio do backup.");
-  const actionableError = entries
-    .map((attempt) => attempt.error)
-    .find((error) => getCloudErrorStatus(error) > 0)
-    || lastError;
-  const summary = entries
-    .map((attempt) => `${attempt.method}: ${getCloudErrorDetail(attempt.error)}`)
-    .join(" | ");
-  const error = new Error(summary || lastError.message || "Falha no envio do backup.");
-  error.name = "CloudUploadError";
-  error.cloudStage = stage;
-  error.cloudFileSize = fileSize;
-  error.cloudAttempts = entries.map((attempt) => ({
-    method: attempt.method,
-    status: getCloudErrorStatus(attempt.error),
-    detail: getCloudErrorDetail(attempt.error),
-  }));
-  error.status = getCloudErrorStatus(actionableError);
-  error.code = actionableError?.code || lastError?.code || "";
-  error.cause = lastError;
-  return error;
-}
-
-function getCloudErrorStatus(error) {
-  const direct = Number(error?.status || error?.statusCode || error?.response?.status || 0);
-  if (direct) return direct;
-  try {
-    const tusStatus = Number(error?.originalResponse?.getStatus?.() || 0);
-    if (tusStatus) return tusStatus;
-  } catch (_error) {
-    // A resposta TUS pode não estar mais disponível depois de uma falha de rede.
-  }
-  const causeStatus = Number(error?.cause?.status || error?.cause?.statusCode || 0);
-  if (causeStatus) return causeStatus;
-  const text = [error?.message, error?.details, error?.hint].filter(Boolean).join(" ");
-  const match = text.match(/(?:response|status)(?: code)?\s*[:=]?\s*(\d{3})/i);
-  return Number(match?.[1] || 0);
-}
-
-function getCloudErrorDetail(error) {
-  const parts = [error?.message, error?.details, error?.hint, error?.code];
-  try {
-    const tusBody = error?.originalResponse?.getBody?.();
-    if (tusBody) parts.push(tusBody);
-  } catch (_error) {
-    // Mantém o diagnóstico principal quando o corpo TUS não puder ser lido.
-  }
-  const clean = parts.filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
-  return clean ? clean.slice(0, 220) : "falha sem detalhes";
-}
-
-function isCloudPayloadError(error) {
-  const status = getCloudErrorStatus(error);
-  const text = getCloudErrorDetail(error);
-  return status === 413 || /payload|too large|request entity too large|maximum size/i.test(text);
-}
-
-function isCloudBackupNotFoundError(error) {
-  const status = Number(error?.status || error?.statusCode || 0);
-  const text = [error?.message, error?.error, error?.code].filter(Boolean).join(" ");
-  return status === 404 || /object not found|not found|no such object/i.test(text);
-}
-
-async function fetchCloudSnapshotV2(client, userId) {
-  const { data: manifest, error: manifestError } = await runCloudRequest(() => client
-    .from(CLOUD_SNAPSHOT_TABLE)
-    .select("user_id,snapshot_id,encoding,chunk_count,payload_length,version,updated_at")
-    .eq("user_id", userId)
-    .maybeSingle());
-  if (manifestError) throw withCloudStage(manifestError, "a leitura do índice do backup");
-  if (!manifest) return null;
-
-  const expectedCount = Math.max(0, normalizeNumber(manifest.chunk_count, 0));
-  if (!expectedCount || !manifest.snapshot_id) {
-    throw withCloudStage(new Error("O índice do backup está incompleto."), "a leitura do índice do backup");
-  }
-
-  setCloudSyncStatus("syncing", `Baixando ${expectedCount} blocos do backup...`);
-  const { data: rows, error: chunksError } = await runCloudRequest(() => client
-    .from(CLOUD_SNAPSHOT_CHUNK_TABLE)
-    .select("chunk_index,chunk_data")
-    .eq("user_id", userId)
-    .eq("snapshot_id", manifest.snapshot_id)
-    .order("chunk_index", { ascending: true }));
-  if (chunksError) throw withCloudStage(chunksError, "o download dos blocos do backup");
-
-  const chunks = Array.isArray(rows) ? rows : [];
-  if (chunks.length !== expectedCount) {
-    throw withCloudStage(
-      new Error(`Backup incompleto: ${chunks.length} de ${expectedCount} blocos encontrados.`),
-      "a verificação do backup"
-    );
-  }
-
-  const payloadText = chunks
-    .sort((first, second) => normalizeNumber(first.chunk_index, 0) - normalizeNumber(second.chunk_index, 0))
-    .map((row) => String(row.chunk_data || ""))
-    .join("");
-  const expectedLength = Math.max(0, normalizeNumber(manifest.payload_length, 0));
-  if (expectedLength && payloadText.length !== expectedLength) {
-    throw withCloudStage(new Error("O tamanho do backup baixado não corresponde ao original."), "a verificação do backup");
-  }
-
-  const checksum = await hashCloudSnapshot(payloadText);
-  if (checksum !== manifest.snapshot_id) {
-    throw withCloudStage(new Error("A integridade do backup não pôde ser confirmada."), "a verificação do backup");
-  }
-
-  let payload;
-  try {
-    payload = JSON.parse(payloadText);
-  } catch (error) {
-    throw withCloudStage(error, "a abertura do backup");
-  }
-
-  return {
-    user_id: userId,
-    email: getCurrentUser()?.email || "",
-    profile: payload?.profile && typeof payload.profile === "object"
-      ? clonePlainData(payload.profile)
-      : buildCloudProfile(getCurrentUser() || {}),
-    app_state: extractBackupState(payload),
-    preferences: extractBackupPreferences(payload) || clonePlainData(preferences),
-    version: payload?.version || manifest.version || BACKUP_VERSION,
-    updated_at: payload?.exportedAt || manifest.updated_at || "",
-  };
-}
-
-async function saveCloudSnapshotV2(client, userId, snapshotPayload) {
-  const payloadText = JSON.stringify(snapshotPayload);
-  const snapshotId = await hashCloudSnapshot(payloadText);
-  const chunks = splitCloudSnapshotText(payloadText);
-  const updatedAt = new Date().toISOString();
-
-  setCloudSyncStatus("syncing", "Preparando o envio seguro...");
-  const { data: uploadedRows, error: uploadedError } = await runCloudRequest(() => client
-    .from(CLOUD_SNAPSHOT_CHUNK_TABLE)
-    .select("chunk_index")
-    .eq("user_id", userId)
-    .eq("snapshot_id", snapshotId));
-  if (uploadedError) throw withCloudStage(uploadedError, "a preparação do envio");
-
-  const uploadedIndexes = new Set(
-    (Array.isArray(uploadedRows) ? uploadedRows : [])
-      .map((row) => normalizeNumber(row.chunk_index, -1))
-      .filter((index) => index >= 0)
-  );
-  const pendingIndexes = chunks
-    .map((_chunk, index) => index)
-    .filter((index) => !uploadedIndexes.has(index));
-  let completedCount = chunks.length - pendingIndexes.length;
-
-  if (completedCount) {
-    setCloudSyncStatus("syncing", `Retomando envio: ${completedCount} de ${chunks.length} blocos já estavam salvos.`);
-  }
-
-  for (let offset = 0; offset < pendingIndexes.length; offset += CLOUD_SNAPSHOT_UPLOAD_BATCH) {
-    const batchIndexes = pendingIndexes.slice(offset, offset + CLOUD_SNAPSHOT_UPLOAD_BATCH);
-    const rows = batchIndexes.map((chunkIndex) => ({
-      user_id: userId,
-      snapshot_id: snapshotId,
-      chunk_index: chunkIndex,
-      chunk_data: chunks[chunkIndex],
-      updated_at: updatedAt,
-    }));
-    const { error } = await runCloudRequest(() => client
-      .from(CLOUD_SNAPSHOT_CHUNK_TABLE)
-      .upsert(rows, { onConflict: "user_id,snapshot_id,chunk_index" }));
-    if (error) {
-      throw withCloudStage(error, `o envio dos blocos ${completedCount + 1} a ${completedCount + rows.length}`);
-    }
-    completedCount += rows.length;
-    setCloudSyncStatus("syncing", `Enviando notas: ${completedCount} de ${chunks.length} blocos.`);
-  }
-
-  const { data: verificationRows, error: verificationError } = await runCloudRequest(() => client
-    .from(CLOUD_SNAPSHOT_CHUNK_TABLE)
-    .select("chunk_index")
-    .eq("user_id", userId)
-    .eq("snapshot_id", snapshotId));
-  if (verificationError) throw withCloudStage(verificationError, "a verificação final");
-  if ((Array.isArray(verificationRows) ? verificationRows.length : 0) !== chunks.length) {
-    throw withCloudStage(new Error("Nem todos os blocos chegaram à nuvem."), "a verificação final");
-  }
-
-  const manifest = {
-    user_id: userId,
-    snapshot_id: snapshotId,
-    encoding: "plain-json",
-    chunk_count: chunks.length,
-    payload_length: payloadText.length,
-    version: BACKUP_VERSION,
-    updated_at: updatedAt,
-  };
-  const { error: manifestError } = await runCloudRequest(() => client
-    .from(CLOUD_SNAPSHOT_TABLE)
-    .upsert(manifest, { onConflict: "user_id" }));
-  if (manifestError) throw withCloudStage(manifestError, "a finalização do backup");
-
-  runCloudRequest(() => client
-    .from(CLOUD_SNAPSHOT_CHUNK_TABLE)
-    .delete()
-    .eq("user_id", userId)
-    .neq("snapshot_id", snapshotId), 1)
-    .catch((error) => console.warn("Não foi possível remover versões antigas do backup.", error));
-}
-
-function splitCloudSnapshotText(payloadText) {
-  const chunks = [];
-  for (let index = 0; index < payloadText.length; index += CLOUD_SNAPSHOT_CHUNK_SIZE) {
-    chunks.push(payloadText.slice(index, index + CLOUD_SNAPSHOT_CHUNK_SIZE));
-  }
-  return chunks.length ? chunks : [""];
-}
-
-async function hashCloudSnapshot(payloadText) {
-  const value = String(payloadText || "");
-  if (window.crypto?.subtle && typeof TextEncoder === "function") {
-    const digest = await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-    return Array.from(new Uint8Array(digest))
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("");
-  }
-
-  let hashA = 2166136261;
-  let hashB = 2246822519;
-  for (let index = 0; index < value.length; index++) {
-    const code = value.charCodeAt(index);
-    hashA = Math.imul(hashA ^ code, 16777619);
-    hashB = Math.imul(hashB ^ code, 3266489917);
-  }
-  return `${(hashA >>> 0).toString(16).padStart(8, "0")}${(hashB >>> 0).toString(16).padStart(8, "0")}`;
-}
-
-function withCloudStage(error, stage) {
-  const wrapped = error instanceof Error
-    ? error
-    : Object.assign(new Error(String(error?.message || "Falha na sincronização.")), error || {});
-  wrapped.cloudStage = stage;
-  return wrapped;
-}
-
-function isCloudMissingSnapshotSchemaError(error) {
-  const text = [error?.code, error?.message, error?.details, error?.hint].filter(Boolean).join(" ");
-  return /noti_sync_snapshots|noti_sync_chunks|schema cache|relation/i.test(text)
-    && /42P01|PGRST205|noti_sync_/i.test(text);
-}
-
-function isCloudMissingLegacySchemaError(error) {
-  const text = [error?.code, error?.message, error?.details, error?.hint].filter(Boolean).join(" ");
-  return /noti_user_data|schema cache|relation/i.test(text)
-    && /42P01|PGRST205|noti_user_data/i.test(text);
-}
-
-function isChunkedCloudAppState(value) {
-  return Boolean(value && typeof value === "object" && value[CLOUD_CHUNK_MARKER]);
-}
-
-function isChunkedCloudProfilePhoto(value) {
-  return Boolean(value && typeof value === "object" && value[CLOUD_PROFILE_PHOTO_MARKER]);
-}
-
-function splitCloudText(value) {
-  const text = String(value || "");
-  const chunks = [];
-  for (let index = 0; index < text.length; index += CLOUD_CHUNK_SIZE) {
-    chunks.push(text.slice(index, index + CLOUD_CHUNK_SIZE));
-  }
-  return chunks.length ? chunks : [""];
-}
-
-async function saveCloudStateChunks(client, userId, appStateJson) {
-  const chunks = splitCloudText(appStateJson);
-  const updatedAt = new Date().toISOString();
-  for (let index = 0; index < chunks.length; index += CLOUD_CHUNK_BATCH_SIZE) {
-    const rows = chunks.slice(index, index + CLOUD_CHUNK_BATCH_SIZE).map((chunk, offset) => ({
-      user_id: userId,
-      chunk_index: index + offset,
-      chunk_data: chunk,
-      updated_at: updatedAt,
-    }));
-    const { error } = await runCloudRequest(() => client
-      .from(CLOUD_CHUNK_TABLE)
-      .upsert(rows, { onConflict: "user_id,chunk_index" }));
-    if (error) throw error;
-  }
-
-  const { error: cleanupError } = await runCloudRequest(() => client
-    .from(CLOUD_CHUNK_TABLE)
-    .delete()
-    .eq("user_id", userId)
-    .gte("chunk_index", chunks.length));
-  if (cleanupError) throw cleanupError;
-
-  return {
-    [CLOUD_CHUNK_MARKER]: true,
-    chunkCount: chunks.length,
-    chunkSize: CLOUD_CHUNK_SIZE,
-    textLength: appStateJson.length,
-    updatedAt,
-  };
-}
-
-async function clearCloudStateChunks(client, userId) {
-  const { error } = await runCloudRequest(() => client
-    .from(CLOUD_CHUNK_TABLE)
-    .delete()
-    .eq("user_id", userId)
-    .gte("chunk_index", 0));
-  if (error && !isCloudMissingChunksError(error)) throw error;
-}
-
-async function fetchCloudStateChunks(client, userId, marker) {
-  const expectedCount = Math.max(0, Number(marker?.chunkCount || 0));
-  const { data, error } = await runCloudRequest(() => client
-    .from(CLOUD_CHUNK_TABLE)
-    .select("chunk_index,chunk_data")
-    .eq("user_id", userId)
-    .gte("chunk_index", 0)
-    .order("chunk_index", { ascending: true }));
-  if (error) throw error;
-
-  const chunks = Array.isArray(data) ? data : [];
-  if (expectedCount && chunks.length < expectedCount) {
-    throw new Error("Backup em nuvem incompleto. Clique em Salvar dados novamente no aparelho principal.");
-  }
-
-  const orderedText = chunks
-    .slice(0, expectedCount || chunks.length)
-    .sort((first, second) => normalizeNumber(first.chunk_index, 0) - normalizeNumber(second.chunk_index, 0))
-    .map((chunk) => String(chunk.chunk_data || ""))
-    .join("");
-  return JSON.parse(orderedText || "{}");
-}
-
-async function prepareCloudProfilePhotoForCloud(client, userId, photo) {
-  const photoText = String(photo || "");
-  if (!photoText) {
-    await clearCloudProfilePhotoChunks(client, userId);
-    return "";
-  }
-  if (photoText.length <= CLOUD_CHUNK_MIN_LENGTH) {
-    await clearCloudProfilePhotoChunks(client, userId);
-    return photoText;
-  }
-  return saveCloudProfilePhotoChunks(client, userId, photoText);
-}
-
-async function saveCloudProfilePhotoChunks(client, userId, photoText) {
-  const chunks = splitCloudText(photoText);
-  const updatedAt = new Date().toISOString();
-  for (let index = 0; index < chunks.length; index += CLOUD_CHUNK_BATCH_SIZE) {
-    const rows = chunks.slice(index, index + CLOUD_CHUNK_BATCH_SIZE).map((chunk, offset) => ({
-      user_id: userId,
-      chunk_index: -1 * (index + offset + 1),
-      chunk_data: chunk,
-      updated_at: updatedAt,
-    }));
-    const { error } = await runCloudRequest(() => client
-      .from(CLOUD_CHUNK_TABLE)
-      .upsert(rows, { onConflict: "user_id,chunk_index" }));
-    if (error) throw error;
-  }
-
-  const { error: cleanupError } = await runCloudRequest(() => client
-    .from(CLOUD_CHUNK_TABLE)
-    .delete()
-    .eq("user_id", userId)
-    .lt("chunk_index", -chunks.length));
-  if (cleanupError) throw cleanupError;
-
-  return {
-    [CLOUD_PROFILE_PHOTO_MARKER]: true,
-    chunkCount: chunks.length,
-    chunkSize: CLOUD_CHUNK_SIZE,
-    textLength: photoText.length,
-    updatedAt,
-  };
-}
-
-async function clearCloudProfilePhotoChunks(client, userId) {
-  const { error } = await runCloudRequest(() => client
-    .from(CLOUD_CHUNK_TABLE)
-    .delete()
-    .eq("user_id", userId)
-    .lt("chunk_index", 0));
-  if (error && !isCloudMissingChunksError(error)) throw error;
-}
-
-async function fetchCloudProfilePhotoChunks(client, userId, marker) {
-  const expectedCount = Math.max(0, Number(marker?.chunkCount || 0));
-  const { data, error } = await runCloudRequest(() => client
-    .from(CLOUD_CHUNK_TABLE)
-    .select("chunk_index,chunk_data")
-    .eq("user_id", userId)
-    .lt("chunk_index", 0)
-    .order("chunk_index", { ascending: false }));
-  if (error) throw error;
-
-  const chunks = Array.isArray(data) ? data : [];
-  if (expectedCount && chunks.length < expectedCount) {
-    throw new Error("Foto de perfil em nuvem incompleta. Clique em Salvar dados novamente no aparelho principal.");
-  }
-
-  return chunks
-    .slice(0, expectedCount || chunks.length)
-    .sort((first, second) => normalizeNumber(second.chunk_index, 0) - normalizeNumber(first.chunk_index, 0))
-    .map((chunk) => String(chunk.chunk_data || ""))
-    .join("");
-}
-
-function isCloudMissingChunksError(error) {
-  const text = [error?.code, error?.message, error?.details, error?.hint].filter(Boolean).join(" ");
-  return /noti_user_data_chunks|schema cache|relation/i.test(text);
-}
-
-async function runCloudRequest(requestFactory, retries = CLOUD_REQUEST_RETRIES) {
-  let lastError = null;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const result = await requestFactory();
-      if (result?.error && isTransientCloudFetchError(result.error) && attempt < retries) {
-        lastError = result.error;
-        await wait(Math.min(5000, 700 * (2 ** attempt)));
-        continue;
-      }
-      return result;
-    } catch (error) {
-      lastError = error;
-      if (!isTransientCloudFetchError(error) || attempt >= retries) throw error;
-      await wait(Math.min(5000, 700 * (2 ** attempt)));
-    }
-  }
-  throw lastError;
-}
-
-function isTransientCloudFetchError(error) {
-  const text = [error?.message, error?.name, error?.code].filter(Boolean).join(" ");
-  return /failed to fetch|networkerror|load failed|fetch failed/i.test(text);
-}
-
-function wait(ms) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
-function buildCloudProfile(user) {
-  return {
-    id: cloudSessionUserId || user.id,
+    id: user.id,
     name: user.name || "",
     username: normalizeUsername(user.username || "@usuario"),
     email: user.email || "",
@@ -2312,121 +1218,10 @@ function buildCloudProfile(user) {
     photo: user.photo || "",
     timeGameScore: normalizeNumber(user.timeGameScore, 0),
     notisualScore: normalizeNumber(user.notisualScore, 0),
-    updatedAt: Date.now(),
+    createdAt: Number.isFinite(user.createdAt) ? user.createdAt : Date.now(),
+    updatedAt: Number.isFinite(user.updatedAt) ? user.updatedAt : Date.now(),
   };
 }
-
-function setCloudSyncStatus(tone, text) {
-  cloudSyncStatus = { tone, text };
-  if (elements?.profileStatus) {
-    elements.profileStatus.textContent = getProfileStatusText(getCurrentUser());
-    elements.profileStatus.dataset.syncTone = tone;
-  }
-}
-
-function getProfileStatusText(user) {
-  if (!user) return "Entre para sincronizar notas, temas e pontos em qualquer dispositivo.";
-  if (cloudSessionUserId === user.id) return cloudSyncStatus.text || "Sincronização em nuvem ativa.";
-  return "Perfil salvo neste navegador.";
-}
-
-function getCloudSyncErrorMessage(error) {
-  const code = String(error?.code || "");
-  const status = getCloudErrorStatus(error);
-  const message = String(error?.message || "");
-  const details = String(error?.details || "");
-  const hint = String(error?.hint || "");
-  const combined = [message, details, hint, code].filter(Boolean).join(" ");
-  const normalized = combined.toLowerCase();
-  const stage = String(error?.cloudStage || "").trim();
-
-  if (!navigator.onLine) return "Sem internet. Alterações salvas neste aparelho.";
-  if (/bucket(?:\s+noti-backups)?\s+not found|noti-backups[^|]*not found/i.test(combined)) {
-    return "Crie o armazenamento executando o arquivo supabase-noti-storage.sql no Supabase.";
-  }
-  if (/mime type|application\/json|invalid mime/i.test(normalized)) {
-    return "O bucket do backup não aceita JSON. Execute novamente o arquivo supabase-noti-storage.sql.";
-  }
-  if (/noti_sync_snapshots|noti_sync_chunks/i.test(combined)) {
-    return "Ative a sincronização nova executando o arquivo supabase-noti-sync-v2.sql no Supabase.";
-  }
-  if (/noti_user_data_chunks/i.test(combined)) {
-    return "Rode o SQL atualizado do Noti no Supabase para salvar notas grandes.";
-  }
-  if (code === "42P01" || code === "PGRST205" || /noti_user_data|schema cache|relation/i.test(combined)) {
-    return "Crie a tabela noti_user_data no Supabase para ativar a nuvem.";
-  }
-  if (code === "42P10" || /on conflict|unique constraint|exclusion constraint|primary key/i.test(combined)) {
-    return "A tabela da nuvem precisa da chave user_id. Rode o SQL atualizado do Noti no Supabase.";
-  }
-  if (status === 401 || /jwt|token|unauthorized|auth session missing|session/i.test(normalized)) {
-    return "Sessão expirada. Entre novamente para sincronizar.";
-  }
-  if (status === 403 || code === "42501" || /row-level security|permission denied|violates row-level security|rls/i.test(combined)) {
-    if (/storage|bucket|object/i.test(normalized) || stage.includes("arquivo de backup")) {
-      return "Permissão do armazenamento negada. Execute novamente o arquivo supabase-noti-storage.sql.";
-    }
-    return "Permissão da nuvem negada. Rode o SQL de políticas do Noti no Supabase.";
-  }
-  if (status === 413 || /payload|too large|request entity too large|maximum size/i.test(normalized)) {
-    return "Dados grandes demais para salvar agora. Remova anexos muito pesados ou divida as imagens.";
-  }
-  if (/failed to fetch|networkerror|load failed|fetch failed/i.test(normalized)) {
-    if (window.location.protocol === "file:") {
-      return "Abra pelo GitHub Pages para sincronizar na nuvem. O arquivo local pode bloquear o Supabase.";
-    }
-    if (stage) {
-      const size = Number(error?.cloudFileSize || 0);
-      const sizeLabel = size ? ` (${formatFileSize(size)})` : "";
-      return `A conexão caiu durante ${stage}${sizeLabel}. Tente novamente; o backup local foi preservado.`;
-    }
-    return "A conexão caiu durante o envio. O progresso foi preservado; clique em Salvar dados para continuar.";
-  }
-  if (/invalid input syntax for type uuid|foreign key|violates foreign key/i.test(combined)) {
-    return "A conta da nuvem ficou inconsistente. Saia e entre novamente.";
-  }
-
-  const readable = formatCloudErrorDetail(message || details || hint);
-  return readable ? `Erro da nuvem: ${readable}` : "Não foi possível sincronizar agora. Tentaremos novamente.";
-}
-
-function formatCloudErrorDetail(text) {
-  const clean = String(text || "").replace(/\s+/g, " ").trim();
-  if (!clean) return "";
-  return clean.length > 150 ? `${clean.slice(0, 147)}...` : clean;
-}
-
-function getAuthErrorMessage(error) {
-  const rawMessage = String(error?.message || error?.error_description || error?.details || "").trim();
-  const message = rawMessage.toLowerCase();
-  const retryMatch = message.match(/after\s+(\d+)\s+seconds?/i);
-  const status = Number(error?.status || error?.statusCode || 0);
-  if (message.includes("email rate limit exceeded")) {
-    return "O limite de e-mails de confirmação foi atingido. Aguarde até 1 hora; se a conta já foi criada, use Entrar.";
-  }
-  if (retryMatch || status === 429 || message.includes("for security purposes")) {
-    const seconds = Math.max(1, normalizeNumber(retryMatch?.[1], 20));
-    return `Aguarde ${seconds} segundos antes de tentar novamente.`;
-  }
-  if (message.includes("already registered") || message.includes("already exists")) return "Esse e-mail já tem conta. Tente entrar.";
-  if (message.includes("invalid login") || message.includes("invalid credentials")) return "E-mail ou senha incorretos.";
-  if (message.includes("email not confirmed")) return "Confirme seu e-mail antes de entrar ou solicite um novo link.";
-  if (message.includes("otp expired") || message.includes("otp_expired") || message.includes("link has expired")) return "O link de confirmação expirou. Solicite um novo e-mail.";
-  if (message.includes("rate limit") || message.includes("too many requests")) return "Aguarde alguns instantes antes de solicitar outro e-mail.";
-  if (message.includes("signup is disabled") || message.includes("signups not allowed")) return "A criação de contas está temporariamente desativada.";
-  if (message.includes("invalid email") || message.includes("email address") && message.includes("invalid")) return "Digite um endereço de e-mail válido.";
-  if (message.includes("error sending confirmation") || message.includes("confirmation email") || message.includes("email send")) {
-    return "A conta não pôde enviar o e-mail de confirmação. Tente novamente em alguns minutos.";
-  }
-  if (message.includes("failed to fetch") || message.includes("networkerror") || message.includes("load failed")) {
-    return "A conexão com o cadastro foi interrompida. Tente novamente sem VPN ou proteção de rede.";
-  }
-  if (message.includes("password")) return "A senha precisa atender aos requisitos do Supabase.";
-  if (!navigator.onLine) return "Sem internet para conectar à conta.";
-  if (rawMessage) return `Não foi possível criar ou acessar a conta: ${formatCloudErrorDetail(rawMessage)}`;
-  return "Não foi possível conectar à conta agora.";
-}
-
 function clearCurrentSessionLocally() {
   currentUserId = "";
   localStorage.removeItem(CURRENT_USER_KEY);
@@ -9306,9 +8101,8 @@ function loadPreferences() {
   }
 }
 
-function savePreferences(options = {}) {
+function savePreferences() {
   localStorage.setItem(PREFS_KEY, JSON.stringify(preferences));
-  if (options.sync !== false) markCloudDataDirty("Preferências salvas neste aparelho. Clique em Salvar dados para enviar à nuvem.");
 }
 
 function applyPreferences() {
@@ -9827,7 +8621,7 @@ function loadUsers() {
     return [];
   }
 }
-function saveUsers(options = {}) {
+function saveUsers() {
   const fullPayload = JSON.stringify(users);
   const withoutLargePhotos = JSON.stringify(users.map((user) => ({
     ...user,
@@ -9850,7 +8644,6 @@ function saveUsers(options = {}) {
   }
 
   if (!saved) console.warn("Não foi possível salvar o perfil neste navegador.", lastError);
-  if (options.sync !== false) markCloudDataDirty("Perfil salvo neste aparelho. Clique em Salvar dados para enviar à nuvem.");
   return saved;
 }
 
@@ -9911,7 +8704,7 @@ function setActiveAccountPanel(panel) {
   elements.loginForm.hidden = isSignup;
   elements.signupForm.hidden = !isSignup;
   const hint = document.querySelector("#accountModeHint");
-  if (hint) hint.textContent = isSignup ? "Crie sua conta para sincronizar o Noti." : "Entre com sua conta para sincronizar seus dados.";
+  if (hint) hint.textContent = isSignup ? "Crie uma conta local neste navegador." : "Entre na conta salva neste navegador.";
   const title = document.querySelector("#accountModalTitle");
   if (title) title.textContent = isSignup ? "Criar conta" : "Entrar no Noti";
 }
@@ -9944,7 +8737,7 @@ async function handleSignupPhoto() {
   }
 }
 
-async function handleSignup(event) {
+function handleSignup(event) {
   event.preventDefault();
   const name = elements.signupNameInput.value.trim();
   const username = normalizeUsername(elements.signupUsernameInput.value);
@@ -9957,78 +8750,68 @@ async function handleSignup(event) {
     showToast("Preencha nome, @usuário, e-mail e senha com pelo menos 6 caracteres");
     return;
   }
-  const client = getSupabaseClient();
 
-  if (client) {
-    const submitButton = elements.signupForm.querySelector('button[type="submit"]');
-    if (submitButton) {
-      submitButton.disabled = true;
-      submitButton.textContent = "Criando...";
-    }
-    let data = null;
-    try {
-      const result = await client.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { name, username, phone, phoneCountry },
-          emailRedirectTo: AUTH_REDIRECT_URL,
-        },
-      });
-      if (result.error) throw result.error;
-      data = result.data;
-    } catch (error) {
-      console.warn("Cadastro em nuvem falhou.", error);
-      showToast(getAuthErrorMessage(error));
-      return;
-    } finally {
-      if (submitButton) {
-        submitButton.disabled = false;
-        submitButton.textContent = "Criar ID";
-      }
-    }
-
-    let localProfileSaved = true;
-    if (data?.user) {
-      upsertLocalUserFromCloudUser(data.user, { name, username, email, phone, phoneCountry, photo: currentSignupPhoto });
-      localProfileSaved = saveUsers({ sync: false });
-    }
-
-    elements.signupForm.reset();
-    elements.signupUsernameInput.value = "@";
-    elements.signupCountrySelect.value = "BR";
-    currentSignupPhoto = "";
-    renderAvatar(elements.signupPhotoPreview, null);
-    refreshAccountUi();
-    closeModals();
-    if (data?.session) {
-      try {
-        await handleCloudSession(data.session);
-      } catch (error) {
-        console.warn("A conta foi criada, mas a sincronização inicial falhou.", error);
-      }
-      showToast(localProfileSaved
-        ? "Conta criada e sincronização ativada"
-        : "Conta criada. O perfil local será recuperado ao entrar novamente.");
-    } else {
-      showToast(localProfileSaved
-        ? "Conta criada. Confirme o e-mail para continuar."
-        : "Conta criada. Confirme o e-mail; adicione a foto novamente depois de entrar.");
-    }
+  const emailUser = users.find((user) => user.email === email) || null;
+  const usernameUser = users.find((user) => user.username.toLowerCase() === username.toLowerCase()) || null;
+  if ((!emailUser && usernameUser) || (emailUser && usernameUser && emailUser.id !== usernameUser.id)) {
+    showToast("E-mail ou usuário já cadastrado neste navegador");
     return;
   }
 
-  if (users.some((user) => user.email === email || user.username.toLowerCase() === username.toLowerCase())) {
-    showToast("E-mail ou usuário já cadastrado");
+  const existingUser = emailUser;
+  const existingIndex = existingUser ? users.findIndex((user) => user.id === existingUser.id) : -1;
+  if (existingUser?.password) {
+    showToast("E-mail ou usuário já cadastrado neste navegador");
     return;
   }
 
+  const previousCurrentUserId = currentUserId;
+  const previousUser = existingUser ? { ...existingUser } : null;
   const now = Date.now();
-  const user = { id: cryptoId(), name, username, email, phone, phoneCountry, password, photo: currentSignupPhoto, timeGameScore: 0, notisualScore: 0, createdAt: now, updatedAt: now };
-  users.push(user);
+  let user;
+
+  if (existingUser) {
+    user = existingUser;
+    Object.assign(user, {
+      name,
+      username,
+      email,
+      phone,
+      phoneCountry,
+      password,
+      photo: currentSignupPhoto || user.photo || "",
+      timeGameScore: normalizeNumber(user.timeGameScore, 0),
+      notisualScore: normalizeNumber(user.notisualScore, 0),
+      updatedAt: now,
+    });
+  } else {
+    user = {
+      id: cryptoId(),
+      name,
+      username,
+      email,
+      phone,
+      phoneCountry,
+      password,
+      photo: currentSignupPhoto,
+      timeGameScore: 0,
+      notisualScore: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    users.push(user);
+  }
+
   currentUserId = user.id;
+  if (!saveUsers()) {
+    if (existingUser && previousUser) users[existingIndex] = previousUser;
+    else users = users.filter((candidate) => candidate.id !== user.id);
+    currentUserId = previousCurrentUserId;
+    showToast("Não há espaço local suficiente para criar a conta");
+    return;
+  }
+
   localStorage.setItem(CURRENT_USER_KEY, currentUserId);
-  saveUsers();
   elements.signupForm.reset();
   elements.signupUsernameInput.value = "@";
   elements.signupCountrySelect.value = "BR";
@@ -10036,84 +8819,22 @@ async function handleSignup(event) {
   renderAvatar(elements.signupPhotoPreview, null);
   refreshAccountUi();
   closeModals();
-  showToast("Conta local criada");
+  showToast(existingUser ? "Conta local ativada" : "Conta local criada");
 }
 
-async function resendSignupConfirmation() {
-  const identifier = String(elements.loginIdentifierInput?.value || "").trim().toLowerCase();
+function handleLogin(event) {
+  event.preventDefault();
+  const identifier = elements.loginIdentifierInput.value.trim().toLowerCase();
+  const password = elements.loginPasswordInput.value;
   const localUser = users.find((candidate) => (
     candidate.email === identifier
     || candidate.username.toLowerCase() === normalizeUsername(identifier).toLowerCase()
   ));
-  const email = identifier.startsWith("@") ? localUser?.email : identifier;
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    showToast("Digite o e-mail da conta para reenviar a confirmação");
-    elements.loginIdentifierInput?.focus();
+
+  if (localUser && !localUser.password) {
+    showToast("Ative esta conta local em Criar ID usando o mesmo e-mail");
     return;
   }
-
-  const client = getSupabaseClient();
-  if (!client) {
-    showToast("A confirmação em nuvem não está disponível agora");
-    return;
-  }
-
-  if (elements.resendConfirmationButton) elements.resendConfirmationButton.disabled = true;
-  try {
-    const { error } = await client.auth.resend({
-      type: "signup",
-      email,
-      options: { emailRedirectTo: AUTH_REDIRECT_URL },
-    });
-    if (error) throw error;
-    showToast("Novo e-mail de confirmação enviado");
-  } catch (error) {
-    console.warn("Não foi possível reenviar a confirmação.", error);
-    showToast(getAuthErrorMessage(error));
-  } finally {
-    if (elements.resendConfirmationButton) elements.resendConfirmationButton.disabled = false;
-  }
-}
-
-async function handleLogin(event) {
-  event.preventDefault();
-  const identifier = elements.loginIdentifierInput.value.trim().toLowerCase();
-  const password = elements.loginPasswordInput.value;
-  const client = getSupabaseClient();
-  const localUser = users.find((candidate) => {
-    return candidate.email === identifier || candidate.username.toLowerCase() === normalizeUsername(identifier).toLowerCase();
-  });
-
-  if (client) {
-    const loginEmail = identifier.startsWith("@") ? localUser?.email : identifier;
-    if (!loginEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginEmail)) {
-      showToast("Neste aparelho, entre com o e-mail da conta para sincronizar.");
-      return;
-    }
-    try {
-      const { data, error } = await client.auth.signInWithPassword({ email: loginEmail, password });
-      if (error) throw error;
-      if (data?.session) {
-        await handleCloudSession(data.session);
-      }
-      elements.loginForm.reset();
-      refreshAccountUi();
-      closeModals();
-      showToast("Conta conectada e sincronizando");
-      return;
-    } catch (error) {
-      console.warn("Login em nuvem falhou.", error);
-      if (/email not confirmed|email_not_confirmed/i.test(String(error?.message || ""))) {
-        showToast("Confirme seu e-mail ou clique em Reenviar e-mail.");
-        return;
-      }
-      if (!localUser || localUser.password !== password) {
-        showToast(getAuthErrorMessage(error));
-        return;
-      }
-    }
-  }
-
   if (!localUser || localUser.password !== password) {
     showToast("Login ou senha incorretos");
     return;
@@ -10124,25 +8845,14 @@ async function handleLogin(event) {
   elements.loginForm.reset();
   refreshAccountUi();
   closeModals();
-  showToast("Conta conectada");
+  showToast("Conta local conectada");
 }
 
-async function logoutUser() {
-  const client = getSupabaseClient();
-  if (client && cloudSessionUserId) {
-    try {
-      await client.auth.signOut();
-    } catch (error) {
-      console.warn("Não foi possível sair da nuvem.", error);
-    }
-  }
-  cloudSessionUserId = "";
-  cloudInitialSyncDone = false;
+function logoutUser() {
   clearCurrentSessionLocally();
   renderSettings();
-  showToast("Você saiu da conta");
+  showToast("Você saiu da conta local");
 }
-
 function openSettingsModal(tab = "profile") {
   if (isMobileLayout()) mobileSettingsReturnScreen = mobileScreen === "editor" ? "editor" : mobileScreen === "list" ? "list" : "folders";
   pendingProfilePhoto = "";
@@ -10182,18 +8892,7 @@ function renderSettingsProfile() {
   elements.profileDisplayName.textContent = user?.name || "Sem conta";
   elements.profileDisplayUsername.textContent = user ? user.username : "Entre para ver seu perfil";
   elements.profileStatus.textContent = getProfileStatusText(user);
-  elements.profileStatus.dataset.syncTone = cloudSyncStatus.tone;
   elements.profileLoginButton.hidden = Boolean(user);
-  if (elements.profileSaveCloudButton) {
-    elements.profileSaveCloudButton.hidden = !user;
-    elements.profileSaveCloudButton.disabled = Boolean(user && cloudSessionUserId !== user.id);
-    elements.profileSaveCloudButton.title = cloudSessionUserId === user?.id ? "Salvar dados deste aparelho na nuvem" : "Entre com a conta em nuvem para salvar";
-  }
-  if (elements.profileSyncCloudButton) {
-    elements.profileSyncCloudButton.hidden = !user;
-    elements.profileSyncCloudButton.disabled = Boolean(user && cloudSessionUserId !== user.id);
-    elements.profileSyncCloudButton.title = cloudSessionUserId === user?.id ? "Baixar última versão salva na nuvem" : "Entre com a conta em nuvem para sincronizar";
-  }
   elements.editProfileButton.hidden = !user;
   elements.logoutButton.hidden = !user;
 }
@@ -10261,7 +8960,7 @@ async function saveProfileSettings() {
     return;
   }
 
-  const previousEmail = user.email;
+  const previousUser = { ...user };
   user.name = name;
   user.username = username;
   user.email = email;
@@ -10270,29 +8969,10 @@ async function saveProfileSettings() {
   user.photo = pendingProfilePhoto || user.photo;
   user.updatedAt = Date.now();
   pendingProfilePhoto = "";
-  saveUsers();
-
-  if (cloudSessionUserId === user.id) {
-    const client = getSupabaseClient();
-    if (client) {
-      try {
-        const updatePayload = {
-          data: {
-            name: user.name,
-            username: user.username,
-            phone: user.phone,
-            phoneCountry: user.phoneCountry,
-          },
-        };
-        if (email && email !== previousEmail) updatePayload.email = email;
-        const { error } = await client.auth.updateUser(updatePayload);
-        if (error) throw error;
-        await saveCloudSnapshotNow({ force: true });
-      } catch (error) {
-        console.warn("Perfil em nuvem não foi totalmente atualizado.", error);
-        setCloudSyncStatus("error", "Perfil local salvo. A nuvem tentará sincronizar depois.");
-      }
-    }
+  if (!saveUsers()) {
+    Object.assign(user, previousUser);
+    showToast("Não há espaço local suficiente para atualizar o perfil");
+    return;
   }
 
   refreshAccountUi();
@@ -10657,7 +9337,7 @@ function createNotesBackupPayload() {
     },
     state: clonePlainData(state),
     preferences: clonePlainData(preferences),
-    profile: user ? clonePlainData(buildCloudProfile(user)) : null,
+    profile: user ? clonePlainData(buildBackupProfile(user)) : null,
   };
 }
 

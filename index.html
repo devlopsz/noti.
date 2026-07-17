@@ -758,7 +758,7 @@
           <div class="account-content">
             <div class="account-heading">
               <h2 id="accountModalTitle">Comece agora</h2>
-              <p id="accountModeHint">Entre na sua conta para sincronizar o Noti.</p>
+              <p id="accountModeHint">Entre na conta salva neste navegador.</p>
             </div>
             <div class="modal-tabs" role="tablist" aria-label="Conta">
               <button class="active" id="loginTabButton" type="button">Entrar</button>
@@ -770,7 +770,6 @@
               <label class="terms-line"><input type="checkbox" checked /> Aceito os termos e a privacidade</label>
               <button class="primary-action filled" type="submit">Entrar</button>
               <p class="account-switch">Não tem ID? <button type="button" data-account-switch="signup">Criar ID</button></p>
-              <p class="account-switch">Não recebeu a confirmação? <button id="resendConfirmationButton" type="button">Reenviar e-mail</button></p>
             </form>
             <form class="account-form" id="signupForm" hidden>
               <label class="photo-picker signup-photo-card"><span id="signupPhotoPreview"><svg><use href="#icon-user"></use></svg></span><strong>Foto de perfil</strong><input id="signupPhotoInput" type="file" accept="image/*" hidden /></label>
@@ -819,11 +818,7 @@
               <p id="profileDisplayUsername">Entre para ver seu perfil</p>
               <h4>Resumo do app</h4>
               <div class="profile-stat-strip" id="profileStatsStrip"></div>
-              <p class="settings-status" id="profileStatus">Entre para sincronizar notas, temas e pontos em qualquer dispositivo.</p>
-              <div class="profile-cloud-actions">
-                <button class="primary-action filled" id="profileSaveCloudButton" type="button">Salvar dados</button>
-                <button class="secondary-action" id="profileSyncCloudButton" type="button">Sincronizar dados</button>
-              </div>
+              <p class="settings-status" id="profileStatus">Entre para acessar seu perfil local neste navegador.</p>
               <button class="secondary-action" id="profileLoginButton" type="button">Entrar ou criar conta</button>
             </div>
           </section>
@@ -960,8 +955,6 @@
     </template>
 
     <script src="default-state.js"></script>
-    <script src="assets/vendor/supabase-js-2.110.7.min.js"></script>
-    <script src="assets/vendor/tus-js-client-4.3.1.min.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
