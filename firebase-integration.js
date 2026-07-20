@@ -410,7 +410,7 @@ async function flushFirebaseSync({ force = false } = {}) {
 
 function createFirebaseSyncPayload(cloudUpdatedAt = Date.now()) {
   return {
-    ...createNotesBackupPayload(),
+    ...createNotesBackupPayload({ clone: false }),
     cloudUpdatedAt,
     firebaseUid: firebaseAuthUser?.uid || "",
   };

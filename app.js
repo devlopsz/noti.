@@ -24,7 +24,12 @@ const FIREBASE_CONFIG = Object.freeze({
 });
 const FIREBASE_SYNC_META_KEY = "noti-firebase-sync-meta-v1";
 const FIREBASE_SYNC_CHUNK_SIZE = 450000;
-const FIREBASE_SYNC_DEBOUNCE_MS = 1400;
+const FIREBASE_SYNC_DEBOUNCE_MS = 5000;
+const STATE_SAVE_DEBOUNCE_MS = 360;
+const STATE_SAVE_MAX_WAIT_MS = 1800;
+const INDEXED_DB_PREFERRED_STATE_CHARS = 240000;
+const SEARCH_RENDER_DEBOUNCE_MS = 120;
+const NOTE_CARD_PREVIEW_MAX_CHARS = 240;
 const PAGES_UPDATE_ASSETS = ["index.html", "app.js", "firebase-integration.js", "styles.css", "terms.html", "privacy.html", "legal.css", "legal.js"];
 const PAGES_UPDATE_CHECK_INTERVAL = 120000;
 const DEFAULT_TOOLBAR_ITEMS = ["theme", "separator-main", "attach", "draw", "drawingBlock", "checklistBlock", "pin", "archive", "delete", "restore", "search", "settings", "account"];
@@ -360,6 +365,12 @@ let firebaseSyncMessage = "Entre para sincronizar seus dados.";
 let statePersistenceInFlight = null;
 let pendingIndexedState = "";
 let stateStorageMode = localStorage.getItem(STORAGE_KEY) === STATE_DB_MARKER ? "indexeddb" : "local";
+let stateSaveTimer = 0;
+let stateSaveDirty = false;
+let stateSaveStartedAt = 0;
+let searchRenderTimer = 0;
+let renderedNoteCardRaf = 0;
+let renderedNoteCardId = "";
 const state = loadState();
 let users = loadUsers();
 let currentUserId = localStorage.getItem(CURRENT_USER_KEY) || "";
@@ -389,6 +400,7 @@ let activeTextSelection = { start: 0, end: 0 };
 let activeRichEditor = null;
 let activeRichRange = null;
 let activeRichSelection = null;
+const dirtyRichEditors = new Set();
 let richTextPressTimer = 0;
 let richTextPressPoint = null;
 let checklistImageTargetId = null;
@@ -422,6 +434,7 @@ let noteCardDensityRaf = 0;
 let isApplyingAutocorrect = false;
 let noteSelectionMode = false;
 const selectedNoteIds = new Set();
+const noteSearchIndexCache = new WeakMap();
 let timeGame = createTimeGameState({ active: false });
 let passTimeScreen = "";
 let passTimeLeaderboardEntries = [];
@@ -698,8 +711,10 @@ async function init() {
   setupMobileLayout();
   setupPhoneCountrySelects();
   bindEvents();
+  setupStatePersistenceGuards();
   renderAccountButton();
   render();
+  scheduleLargeStateMigration();
   setupAutoTooltips();
   setupPagesUpdateChecker();
   initializeFirebaseIntegration();
@@ -935,15 +950,11 @@ function bindEvents() {
 
   elements.searchInput.addEventListener("input", () => {
     if (elements.mobileSearchInput.value !== elements.searchInput.value) elements.mobileSearchInput.value = elements.searchInput.value;
-    selectedNoteId = getVisibleNotes()[0]?.id ?? null;
-    renderNotes();
-    renderEditor();
+    scheduleSearchRender();
   });
   elements.mobileSearchInput.addEventListener("input", () => {
     if (elements.searchInput.value !== elements.mobileSearchInput.value) elements.searchInput.value = elements.mobileSearchInput.value;
-    selectedNoteId = getVisibleNotes()[0]?.id ?? null;
-    renderNotes();
-    renderEditor();
+    scheduleSearchRender();
   });
 
   elements.emptyTrashButton.addEventListener("click", emptyTrash);
@@ -983,13 +994,13 @@ function bindEvents() {
   elements.titleInput.addEventListener("input", () => {
     updateSelectedNote((note) => {
       note.title = elements.titleInput.value;
-    }, { renderEditor: false });
+    }, { renderEditor: false, lightweight: true });
   });
 
   elements.bodyInput.addEventListener("input", () => {
     updateSelectedNote((note) => {
       note.content = elements.bodyInput.value;
-    }, { renderEditor: false });
+    }, { renderEditor: false, lightweight: true });
   });
 
   elements.folderSelect.addEventListener("change", () => {
@@ -1015,10 +1026,10 @@ function bindEvents() {
     addShoppingItem();
   });
 
-  elements.goalNameInput.addEventListener("input", () => updateGoalData({ name: elements.goalNameInput.value }, { syncTitle: true, renderEditor: false }));
-  elements.goalTargetInput.addEventListener("input", () => updateGoalData({ target: normalizeNumber(elements.goalTargetInput.value, 0) }, { renderEditor: false }));
-  elements.goalSavedInput.addEventListener("input", () => updateGoalData({ saved: normalizeNumber(elements.goalSavedInput.value, 0) }, { renderEditor: false }));
-  elements.goalCategoryInput.addEventListener("input", () => updateGoalData({ category: elements.goalCategoryInput.value }, { renderEditor: false }));
+  elements.goalNameInput.addEventListener("input", () => updateGoalData({ name: elements.goalNameInput.value }, { syncTitle: true, renderEditor: false, lightweight: true }));
+  elements.goalTargetInput.addEventListener("input", () => updateGoalData({ target: normalizeNumber(elements.goalTargetInput.value, 0) }, { renderEditor: false, lightweight: true }));
+  elements.goalSavedInput.addEventListener("input", () => updateGoalData({ saved: normalizeNumber(elements.goalSavedInput.value, 0) }, { renderEditor: false, lightweight: true }));
+  elements.goalCategoryInput.addEventListener("input", () => updateGoalData({ category: elements.goalCategoryInput.value }, { renderEditor: false, lightweight: true }));
   elements.goalStartDateInput.addEventListener("change", () => updateGoalData({ startDate: elements.goalStartDateInput.value }));
   elements.goalHasDeadlineInput.addEventListener("change", () => updateGoalData({ hasTargetDate: elements.goalHasDeadlineInput.checked }));
   elements.goalTargetDateInput.addEventListener("change", () => updateGoalData({ targetDate: elements.goalTargetDateInput.value }));
@@ -1332,6 +1343,33 @@ function queueIndexedStatePersistence(serialized) {
   return statePersistenceInFlight;
 }
 
+function setupStatePersistenceGuards() {
+  const flushPendingChanges = () => {
+    if (!stateSaveDirty) return;
+    void flushStatePersistence().catch((error) => console.error("Não foi possível concluir o salvamento das notas.", error));
+  };
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushPendingChanges();
+  });
+  window.addEventListener("pagehide", flushPendingChanges);
+  window.addEventListener("beforeunload", flushPendingChanges);
+}
+
+function scheduleLargeStateMigration() {
+  if (stateStorageMode !== "local") return;
+  const serialized = localStorage.getItem(STORAGE_KEY);
+  if (!serialized || serialized === STATE_DB_MARKER || serialized.length < INDEXED_DB_PREFERRED_STATE_CHARS) return;
+
+  const migrate = () => {
+    void queueIndexedStatePersistence(serialized).catch((error) => {
+      console.warn("Não foi possível otimizar o armazenamento local.", error);
+    });
+  };
+  if ("requestIdleCallback" in window) window.requestIdleCallback(migrate, { timeout: 2500 });
+  else window.setTimeout(migrate, 800);
+}
+
 function getDefaultInitialState() {
   const fallback = {
     folders: [
@@ -1428,24 +1466,60 @@ function normalizeState(rawState) {
   };
 }
 
-function saveState() {
-  const serialized = JSON.stringify(state);
-  let persistence;
+function saveState(options = {}) {
+  stateSaveDirty = true;
+  if (!stateSaveStartedAt) stateSaveStartedAt = Date.now();
 
-  if (stateStorageMode === "indexeddb") {
+  if (options.immediate === true) return flushStatePersistence();
+
+  clearTimeout(stateSaveTimer);
+  const elapsed = Date.now() - stateSaveStartedAt;
+  const delay = Math.max(0, Math.min(STATE_SAVE_DEBOUNCE_MS, STATE_SAVE_MAX_WAIT_MS - elapsed));
+  stateSaveTimer = window.setTimeout(() => {
+    stateSaveTimer = 0;
+    void flushStatePersistence().catch((error) => console.error("Não foi possível salvar as notas.", error));
+  }, delay);
+  return Promise.resolve();
+}
+
+function flushStatePersistence() {
+  clearTimeout(stateSaveTimer);
+  stateSaveTimer = 0;
+  stateSaveStartedAt = 0;
+
+  flushDirtyRichEditorsToState();
+  if (!stateSaveDirty) return statePersistenceInFlight || Promise.resolve();
+  stateSaveDirty = false;
+
+  let serialized;
+  try {
+    serialized = JSON.stringify(state);
+  } catch (error) {
+    stateSaveDirty = true;
+    return Promise.reject(error);
+  }
+
+  let persistence;
+  if (stateStorageMode === "indexeddb" || serialized.length >= INDEXED_DB_PREFERRED_STATE_CHARS) {
     persistence = queueIndexedStatePersistence(serialized);
   } else {
     try {
       localStorage.setItem(STORAGE_KEY, serialized);
       persistence = Promise.resolve();
     } catch (error) {
-      if (!isStorageQuotaError(error)) throw error;
+      if (!isStorageQuotaError(error)) {
+        stateSaveDirty = true;
+        return Promise.reject(error);
+      }
       persistence = queueIndexedStatePersistence(serialized);
     }
   }
 
   markFirebaseDataDirty();
-  return persistence;
+  return Promise.resolve(persistence).catch((error) => {
+    stateSaveDirty = true;
+    throw error;
+  });
 }
 
 function getProfileStatusText(user) {
@@ -1481,9 +1555,10 @@ function clearCurrentSessionLocally() {
 }
 
 function render() {
-  ensureSelection();
+  const visibleNotes = getVisibleNotes();
+  ensureSelection(visibleNotes);
   renderSidebar();
-  renderNotes();
+  renderNotes(visibleNotes);
   renderEditor();
   renderSettingsIfOpen();
   updateMobileLayoutState();
@@ -1559,15 +1634,14 @@ function renderSidebar() {
     });
 }
 
-function renderNotes() {
-  const visibleNotes = getVisibleNotes();
+function renderNotes(visibleNotes = getVisibleNotes()) {
   const selectedStillVisible = visibleNotes.some((note) => note.id === selectedNoteId);
 
   if (!selectedStillVisible) {
     selectedNoteId = shouldAutoSelectVisibleNote() ? visibleNotes[0]?.id ?? null : null;
   }
 
-  elements.notesList.replaceChildren();
+  const fragment = document.createDocumentFragment();
   elements.emptyState.hidden = visibleNotes.length > 0;
   renderListViewTitle();
   elements.currentScope.textContent = getViewScope();
@@ -1585,7 +1659,7 @@ function renderNotes() {
       const heading = document.createElement("p");
       heading.className = "date-group";
       heading.textContent = group;
-      elements.notesList.append(heading);
+      fragment.append(heading);
     }
 
     const card = elements.noteCardTemplate.content.firstElementChild.cloneNode(true);
@@ -1604,8 +1678,9 @@ function renderNotes() {
     card.querySelector(".note-pin").hidden = !note.pinned;
     card.querySelector(".note-complete").hidden = !complete;
     card.querySelector("h3").textContent = noteTitle;
-    card.querySelector("p").textContent = getNotePreview(note);
+    const preview = getNotePreview(note);
     if (note.type === "goal") renderGoalNoteCard(card, note);
+    else card.querySelector("p").textContent = preview;
     card.querySelector(".note-folder").textContent = folder?.name || "Sem pasta";
     card.querySelector(".note-date").textContent = formatNoteDate(note.createdAt);
     const modified = card.querySelector(".note-modified");
@@ -1658,9 +1733,51 @@ function renderNotes() {
       reorderDraggedNote(note.id);
     });
 
-    elements.notesList.append(card);
+    fragment.append(card);
   });
+  elements.notesList.replaceChildren(fragment);
   scheduleNoteCardDensityUpdate();
+}
+
+function scheduleRenderedNoteCardUpdate(noteId) {
+  renderedNoteCardId = noteId || renderedNoteCardId;
+  if (elements.searchInput.value.trim()) {
+    scheduleSearchRender();
+    return;
+  }
+  if (renderedNoteCardRaf) return;
+  renderedNoteCardRaf = requestAnimationFrame(() => {
+    renderedNoteCardRaf = 0;
+    const nextNoteId = renderedNoteCardId;
+    renderedNoteCardId = "";
+    updateRenderedNoteCard(nextNoteId);
+  });
+}
+
+function updateRenderedNoteCard(noteId) {
+  const note = state.notes.find((candidate) => candidate.id === noteId);
+  if (!note || !elements.notesList) return;
+  const card = Array.from(elements.notesList.querySelectorAll(".note-card"))
+    .find((candidate) => candidate.dataset.noteId === noteId);
+  if (!card) return;
+
+  const noteTitle = note.title.trim() || "Sem título";
+  const folder = getFolder(note.folderId);
+  const highlightColor = normalizeOptionalAccent(note.highlightColor);
+  card.dataset.tooltip = noteTitle;
+  card.dataset.notiTooltip = noteTitle;
+  card.querySelector("h3").textContent = noteTitle;
+  card.querySelector(".note-kind").textContent = getNoteKindLabel(note);
+  card.querySelector(".note-folder").textContent = folder?.name || "Sem pasta";
+  card.querySelector(".note-pin").hidden = !note.pinned;
+  card.querySelector(".note-complete").hidden = !isChecklistComplete(note);
+  card.classList.toggle("note-highlighted", Boolean(highlightColor));
+  if (highlightColor) card.style.setProperty("--note-highlight-color", highlightColor);
+  else card.style.removeProperty("--note-highlight-color");
+
+  if (note.type === "goal") renderGoalNoteCard(card, note);
+  else card.querySelector("p").textContent = getNotePreview(note);
+  updateSingleNoteCardDensity(card);
 }
 
 function scheduleNoteCardDensityUpdate() {
@@ -1671,16 +1788,18 @@ function scheduleNoteCardDensityUpdate() {
 function updateNoteCardDensity() {
   noteCardDensityRaf = 0;
   if (!elements.notesList) return;
-  elements.notesList.querySelectorAll(".note-card").forEach((card) => {
-    card.classList.remove("note-card-roomy");
-    if (isMobileLayout() || card.classList.contains("goal-note-card")) return;
-    const preview = card.querySelector("p");
-    if (!preview) return;
-    const styles = getComputedStyle(preview);
-    const lineHeight = parseFloat(styles.lineHeight) || parseFloat(styles.fontSize) * 1.32 || 17;
-    const renderedLines = preview.getBoundingClientRect().height / lineHeight;
-    card.classList.toggle("note-card-roomy", renderedLines > 1.45);
-  });
+  elements.notesList.querySelectorAll(".note-card").forEach(updateSingleNoteCardDensity);
+}
+
+function updateSingleNoteCardDensity(card) {
+  card.classList.remove("note-card-roomy");
+  if (isMobileLayout() || card.classList.contains("goal-note-card")) return;
+  const preview = card.querySelector("p");
+  if (!preview) return;
+  const styles = getComputedStyle(preview);
+  const lineHeight = parseFloat(styles.lineHeight) || parseFloat(styles.fontSize) * 1.32 || 17;
+  const renderedLines = preview.getBoundingClientRect().height / lineHeight;
+  card.classList.toggle("note-card-roomy", renderedLines > 1.45);
 }
 
 function bindMobileNoteGestures(card, note) {
@@ -2281,11 +2400,14 @@ function renderAttachments(note) {
       const image = document.createElement("img");
       image.src = attachment.dataUrl;
       image.alt = attachment.name;
+      image.loading = "lazy";
+      image.decoding = "async";
       preview.append(image);
     } else if (attachment.type.startsWith("video/")) {
       const video = document.createElement("video");
       video.src = attachment.dataUrl;
       video.controls = true;
+      video.preload = "metadata";
       preview.append(video);
     } else if (attachment.type.startsWith("audio/")) {
       preview.classList.add("attachment-file");
@@ -2293,6 +2415,7 @@ function renderAttachments(note) {
       const audio = document.createElement("audio");
       audio.src = attachment.dataUrl;
       audio.controls = true;
+      audio.preload = "metadata";
       preview.append(audio);
     } else {
       preview.classList.add("attachment-file");
@@ -2412,7 +2535,10 @@ function renderNoteImageGrid(note, imageBlocks) {
         <svg><use href="#icon-x"></use></svg>
       </button>
     `;
-    figure.querySelector("img").src = attachment.dataUrl;
+    const image = figure.querySelector("img");
+    image.src = attachment.dataUrl;
+    image.loading = "lazy";
+    image.decoding = "async";
     const removeButton = figure.querySelector("button");
     removeButton.disabled = note.trashed || note.finalized;
     removeButton.hidden = note.finalized;
@@ -2561,7 +2687,7 @@ function updateInlineChecklistProgress(card, block) {
 }
 
 function renderChecklist(note) {
-  elements.checklistItems.replaceChildren();
+  const fragment = document.createDocumentFragment();
 
   const total = note.items.length;
   const done = note.items.filter((item) => item.done).length;
@@ -2621,6 +2747,8 @@ function renderChecklist(note) {
     if (item.image?.dataUrl) {
       imageWrap.hidden = false;
       itemImage.src = item.image.dataUrl;
+      itemImage.loading = "lazy";
+      itemImage.decoding = "async";
     }
 
     checkbox.addEventListener("change", () => {
@@ -2636,12 +2764,13 @@ function renderChecklist(note) {
       removeChecklistItem(item.id);
     });
 
-    elements.checklistItems.append(row);
+    fragment.append(row);
   });
+  elements.checklistItems.replaceChildren(fragment);
 }
 
 function renderShopping(note) {
-  elements.shoppingItems.replaceChildren();
+  const fragment = document.createDocumentFragment();
   updateShoppingTotal(note);
 
   note.shoppingItems.forEach((item) => {
@@ -2707,6 +2836,8 @@ function renderShopping(note) {
     if (item.image?.dataUrl) {
       imageWrap.hidden = false;
       itemImage.src = item.image.dataUrl;
+      itemImage.loading = "lazy";
+      itemImage.decoding = "async";
     }
 
     checkbox.addEventListener("change", () => {
@@ -2716,11 +2847,11 @@ function renderShopping(note) {
     bindRichTextEditor(textEditor);
 
     qtyInput.addEventListener("input", () => {
-      updateShoppingItem(item.id, { quantity: normalizeNumber(qtyInput.value, 0) }, { renderEditor: false });
+      updateShoppingItem(item.id, { quantity: normalizeNumber(qtyInput.value, 0) }, { renderEditor: false, lightweight: true });
     });
 
     priceInput.addEventListener("input", () => {
-      updateShoppingItem(item.id, { price: normalizeNumber(priceInput.value, 0) }, { renderEditor: false });
+      updateShoppingItem(item.id, { price: normalizeNumber(priceInput.value, 0) }, { renderEditor: false, lightweight: true });
     });
 
     imageButton.addEventListener("click", () => openShoppingImagePicker(item.id));
@@ -2734,8 +2865,9 @@ function renderShopping(note) {
       removeShoppingItem(item.id);
     });
 
-    elements.shoppingItems.append(row);
+    fragment.append(row);
   });
+  elements.shoppingItems.replaceChildren(fragment);
 }
 
 function canUseDrawingTools(note) {
@@ -4088,8 +4220,34 @@ function updateShoppingTotal(note) {
   elements.shoppingTotalText.textContent = formatCurrency(getShoppingTotal(note), note.currency || "BRL");
 }
 
+function scheduleSearchRender() {
+  clearTimeout(searchRenderTimer);
+  searchRenderTimer = window.setTimeout(() => {
+    searchRenderTimer = 0;
+    const visibleNotes = getVisibleNotes();
+    selectedNoteId = visibleNotes[0]?.id ?? null;
+    renderNotes(visibleNotes);
+    renderEditor();
+  }, SEARCH_RENDER_DEBOUNCE_MS);
+}
+
+function getNoteSearchIndex(note) {
+  const folderName = getFolder(note.folderId)?.name || "";
+  const version = `${note.updatedAt}|${folderName}`;
+  const cached = noteSearchIndexCache.get(note);
+  if (cached?.version === version) return cached.value;
+
+  const itemText = note.items.map((item) => item.text).join(" ");
+  const shoppingText = note.shoppingItems.map((item) => item.text).join(" ");
+  const goalText = note.goal ? `${note.goal.name} ${note.goal.category}` : "";
+  const attachmentText = note.attachments.map((attachment) => attachment.name).join(" ");
+  const value = `${note.title} ${note.content} ${itemText} ${shoppingText} ${goalText} ${folderName} ${attachmentText}`.toLocaleLowerCase("pt-BR");
+  noteSearchIndexCache.set(note, { version, value });
+  return value;
+}
+
 function getVisibleNotes() {
-  const query = elements.searchInput.value.trim().toLowerCase();
+  const query = elements.searchInput.value.trim().toLocaleLowerCase("pt-BR");
 
   return state.notes
     .filter((note) => {
@@ -4100,12 +4258,7 @@ function getVisibleNotes() {
 
       if (!query) return true;
 
-      const folder = getFolder(note.folderId)?.name || "";
-      const itemText = note.items.map((item) => item.text).join(" ");
-      const shoppingText = note.shoppingItems.map((item) => item.text).join(" ");
-      const goalText = note.goal ? `${note.goal.name} ${note.goal.category}` : "";
-      const attachmentText = note.attachments.map((attachment) => attachment.name).join(" ");
-      return `${note.title} ${note.content} ${itemText} ${shoppingText} ${goalText} ${folder} ${attachmentText}`.toLowerCase().includes(query);
+      return getNoteSearchIndex(note).includes(query);
     })
     .sort(sortNotes);
 }
@@ -4120,8 +4273,7 @@ function getSelectedNote() {
   return state.notes.find((note) => note.id === selectedNoteId) || null;
 }
 
-function ensureSelection() {
-  const visibleNotes = getVisibleNotes();
+function ensureSelection(visibleNotes = getVisibleNotes()) {
   if (!visibleNotes.some((note) => note.id === selectedNoteId)) {
     selectedNoteId = shouldAutoSelectVisibleNote() ? visibleNotes[0]?.id ?? null : null;
   }
@@ -4425,14 +4577,19 @@ function isDoneOnlyPatch(patch) {
 
 function updateSelectedNote(mutator, options = {}) {
   const shouldRenderEditor = options.renderEditor !== false;
+  const lightweight = options.lightweight === true;
   const note = getSelectedNote();
   if (!note) return;
 
   mutator(note);
   note.updatedAt = Date.now();
+  noteSearchIndexCache.delete(note);
   saveState();
-  renderSidebar();
-  renderNotes();
+  if (lightweight) scheduleRenderedNoteCardUpdate(note.id);
+  else {
+    renderSidebar();
+    renderNotes();
+  }
   elements.updatedLabel.textContent = `Editado ${formatRelativeTime(note.updatedAt)}`;
   if (shouldRenderEditor) {
     renderEditor();
@@ -4553,7 +4710,7 @@ function updateGoalData(patch, options = {}) {
     goal.recommendationMode = normalizeGoalRecommendationMode(goal.recommendationMode);
     goal.totalMode = normalizeGoalTotalMode(goal.totalMode);
     if (options.syncTitle) note.title = goal.name.trim() || "Nova meta";
-  }, { renderEditor: options.renderEditor !== false });
+  }, { renderEditor: options.renderEditor !== false, lightweight: options.lightweight === true });
 }
 
 function handleGoalSummaryAction(event) {
@@ -4584,6 +4741,7 @@ function changeGoalSummaryPreference(patch) {
   goal.recommendationMode = normalizeGoalRecommendationMode(goal.recommendationMode);
   goal.totalMode = normalizeGoalTotalMode(goal.totalMode);
   note.updatedAt = Date.now();
+  noteSearchIndexCache.delete(note);
   saveState();
   renderEditor();
 }
@@ -6883,19 +7041,26 @@ function getNotePreview(note) {
   if (note.type === "checklist") {
     const remaining = note.items.filter((item) => !item.done).map((item) => item.text).filter(Boolean);
     const done = note.items.filter((item) => item.done).length;
-    if (remaining.length) return remaining.slice(0, 3).join(" · ");
+    if (remaining.length) return truncateNoteCardPreview(remaining.slice(0, 3).join(" · "));
     if (note.items.length) return `${done} ${done === 1 ? "item concluído" : "itens concluídos"}`;
     return getAttachmentSummary(note) || "Checklist vazio";
   }
 
   if (note.type === "shopping") {
     const pending = note.shoppingItems.filter((item) => !item.done).map((item) => item.text).filter(Boolean);
-    if (pending.length) return `${pending.slice(0, 3).join(" · ")} · ${formatCurrency(getShoppingTotal(note), note.currency)}`;
+    if (pending.length) return truncateNoteCardPreview(`${pending.slice(0, 3).join(" · ")} · ${formatCurrency(getShoppingTotal(note), note.currency)}`);
     if (note.shoppingItems.length) return `Total ${formatCurrency(getShoppingTotal(note), note.currency)}`;
     return "Lista de compras vazia";
   }
 
-  return getTextFromBlocks(note).trim() || getAttachmentSummary(note) || "Nota vazia";
+  const content = String(note.content || "").trim() || getTextFromBlocks(note).trim();
+  return truncateNoteCardPreview(content || getAttachmentSummary(note) || "Nota vazia");
+}
+
+function truncateNoteCardPreview(value) {
+  const normalized = String(value || "").replace(/\s+/g, " ").trim();
+  if (normalized.length <= NOTE_CARD_PREVIEW_MAX_CHARS) return normalized;
+  return `${normalized.slice(0, NOTE_CARD_PREVIEW_MAX_CHARS - 1).trimEnd()}…`;
 }
 
 function getAttachmentSummary(note) {
@@ -6919,6 +7084,8 @@ function renderNoteThumbnail(card, note) {
     const image = document.createElement("img");
     image.src = attachment.dataUrl;
     image.alt = "";
+    image.loading = "lazy";
+    image.decoding = "async";
     thumb.append(image);
     return;
   }
@@ -7032,19 +7199,22 @@ function autoResizeTextarea(textarea) {
 
 function bindRichTextEditor(editor) {
   if (!editor) return;
+  if (!editor.dataset.noteId && selectedNoteId) editor.dataset.noteId = selectedNoteId;
   const remember = () => rememberRichTextEditor(editor);
+  const rememberLight = () => rememberRichTextEditor(editor, { captureOffsets: false });
   editor.addEventListener("focus", remember);
   editor.addEventListener("click", remember);
   editor.addEventListener("keydown", (event) => handleRichTextKeydown(event, editor));
-  editor.addEventListener("keyup", remember);
+  editor.addEventListener("keyup", rememberLight);
   editor.addEventListener("mouseup", remember);
   editor.addEventListener("input", () => {
     if (!applyAutoListShortcutAtCaret(editor)) {
       applyMarkdownShortcutAtCaret(editor);
     }
-    persistRichEditor(editor);
-    rememberRichTextEditor(editor);
+    queueRichEditorPersistence(editor);
+    rememberLight();
   });
+  editor.addEventListener("blur", () => persistRichEditor(editor));
   editor.addEventListener("paste", (event) => {
     event.preventDefault();
     const text = event.clipboardData?.getData("text/plain") || "";
@@ -7124,7 +7294,7 @@ function getCurrentRichSelectionRange(editor = getActiveRichEditor()) {
   return isRangeInsideEditor(editor, range) ? range : null;
 }
 
-function rememberRichTextEditor(editor) {
+function rememberRichTextEditor(editor, options = {}) {
   if (!editor) return;
   activeRichEditor = editor;
   activeTextBlockId = editor.dataset.blockId || "";
@@ -7132,7 +7302,7 @@ function rememberRichTextEditor(editor) {
   const selection = window.getSelection?.();
   if (selection?.rangeCount && editor.contains(selection.anchorNode)) {
     activeRichRange = selection.getRangeAt(0).cloneRange();
-    activeRichSelection = captureRichSelection(editor, activeRichRange);
+    activeRichSelection = options.captureOffsets === false ? null : captureRichSelection(editor, activeRichRange);
   }
 }
 
@@ -7143,7 +7313,7 @@ function handleRichSelectionChange() {
   const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
   const editor = element?.closest?.("[data-rich-editor]");
   if (!editor || !editor.isContentEditable) return;
-  rememberRichTextEditor(editor);
+  rememberRichTextEditor(editor, { captureOffsets: false });
 }
 
 function getActiveRichEditor() {
@@ -7966,11 +8136,36 @@ function placeRichTextMenus() {
   });
 }
 
-function persistRichEditor(editor) {
-  const note = getSelectedNote();
-  if (!canEditNoteContent(note)) return;
+function queueRichEditorPersistence(editor) {
+  const note = getRichEditorNote(editor);
+  if (!editor || !canEditNoteContent(note)) return;
+  dirtyRichEditors.add(editor);
+  note.updatedAt = Date.now();
+  noteSearchIndexCache.delete(note);
+  saveState();
+  if (elements.updatedLabel) elements.updatedLabel.textContent = `Editado ${formatRelativeTime(note.updatedAt)}`;
+}
+
+function getRichEditorNote(editor) {
+  const noteId = editor?.dataset.noteId || selectedNoteId;
+  return state.notes.find((note) => note.id === noteId) || null;
+}
+
+function flushDirtyRichEditorsToState() {
+  if (!dirtyRichEditors.size) return;
+  const noteIds = new Set();
+  Array.from(dirtyRichEditors).forEach((editor) => {
+    const noteId = persistRichEditor(editor, { save: false });
+    if (noteId) noteIds.add(noteId);
+  });
+  noteIds.forEach(scheduleRenderedNoteCardUpdate);
+}
+
+function persistRichEditor(editor, options = {}) {
+  const note = getRichEditorNote(editor);
+  if (!editor || !note) return;
   const html = sanitizeRichHtml(editor.innerHTML, { trim: false });
-  const text = getPlainTextFromHtml(html);
+  const text = getPlainTextFromHtml(html, { sanitized: true });
   const kind = editor.dataset.richKind;
 
   if (kind === "note") {
@@ -7995,11 +8190,15 @@ function persistRichEditor(editor) {
     item.text = text;
   }
 
+  dirtyRichEditors.delete(editor);
+  noteSearchIndexCache.delete(note);
+  if (options.save === false) return note.id;
+
   note.updatedAt = Date.now();
   saveState();
-  renderSidebar();
-  renderNotes();
-  if (elements.updatedLabel) elements.updatedLabel.textContent = `Editado ${formatRelativeTime(note.updatedAt)}`;
+  scheduleRenderedNoteCardUpdate(note.id);
+  if (elements.updatedLabel && note.id === selectedNoteId) elements.updatedLabel.textContent = `Editado ${formatRelativeTime(note.updatedAt)}`;
+  return note.id;
 }
 
 function normalizeEditorMarkup(editor) {
@@ -8086,9 +8285,9 @@ function plainTextToHtml(text = "") {
   return escapeHtml(text).replace(/\n/g, "<br>");
 }
 
-function getPlainTextFromHtml(html = "") {
+function getPlainTextFromHtml(html = "", options = {}) {
   const container = document.createElement("div");
-  container.innerHTML = sanitizeRichHtml(html);
+  container.innerHTML = options.sanitized === true ? String(html || "") : sanitizeRichHtml(html);
   return (container.innerText || container.textContent || "").replace(/\u00a0/g, " ").trim();
 }
 
@@ -8194,9 +8393,9 @@ function updateInlineChecklistItem(blockId, itemId, patch, options = {}) {
 
   note.content = getTextFromBlocks(note);
   note.updatedAt = Date.now();
+  noteSearchIndexCache.delete(note);
   saveState();
-  renderSidebar();
-  renderNotes();
+  scheduleRenderedNoteCardUpdate(note.id);
   elements.updatedLabel.textContent = note.finalized ? `Finalizada \u00b7 Editado ${formatRelativeTime(note.updatedAt)}` : `Editado ${formatRelativeTime(note.updatedAt)}`;
   if (options.renderEditor !== false) renderEditor();
 }
@@ -10048,8 +10247,9 @@ function downloadBlob(blob, fileName) {
   setTimeout(() => URL.revokeObjectURL(url), 500);
 }
 
-function createNotesBackupPayload() {
+function createNotesBackupPayload(options = {}) {
   const user = getCurrentUser();
+  const shouldClone = options.clone !== false;
   return {
     type: BACKUP_TYPE,
     version: BACKUP_VERSION,
@@ -10065,9 +10265,9 @@ function createNotesBackupPayload() {
       }, 0),
       drawings: state.notes.reduce((total, note) => total + note.pageDrawings.length + note.drawingBlocks.length, 0),
     },
-    state: clonePlainData(state),
-    preferences: clonePlainData(preferences),
-    profile: user ? clonePlainData(buildBackupProfile(user)) : null,
+    state: shouldClone ? clonePlainData(state) : state,
+    preferences: shouldClone ? clonePlainData(preferences) : preferences,
+    profile: user ? (shouldClone ? clonePlainData(buildBackupProfile(user)) : buildBackupProfile(user)) : null,
   };
 }
 
@@ -10263,7 +10463,7 @@ async function restoreBackupData(nextState, nextPreferences = null) {
   drawingRedoStacks.clear();
 
   try {
-    await saveState();
+    await saveState({ immediate: true });
     if (nextPreferences) {
       try {
         savePreferences();

@@ -1109,7 +1109,11 @@
       </button>
     </template>
 
-    <script src="default-state.js"></script>
+    <script>
+      if (!localStorage.getItem("checklist-os-state-v1")) {
+        document.write('<script src="default-state.js"><\\/script>');
+      }
+    </script>
     <script src="assets/vendor/firebase-app-compat-12.16.0.js"></script>
     <script src="assets/vendor/firebase-auth-compat-12.16.0.js"></script>
     <script src="assets/vendor/firebase-database-compat-12.16.0.js"></script>
