@@ -12,6 +12,13 @@
         ".write": "auth != null && (!data.exists() || data.val() === auth.uid) && newData.isString() && newData.val() === auth.uid",
         ".validate": "newData.isString() && newData.val() === auth.uid"
       }
+    },
+    "leaderboard": {
+      ".read": true,
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['name', 'username', 'totalPoints', 'updatedAt']) && newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 80 && newData.child('username').isString() && newData.child('username').val().length > 1 && newData.child('username').val().length <= 25 && newData.child('totalPoints').isNumber() && newData.child('totalPoints').val() > 0 && newData.child('updatedAt').isNumber() && (!newData.child('photo').exists() || (newData.child('photo').isString() && newData.child('photo').val().length <= 180000))"
+      }
     }
   }
 }

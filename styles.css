@@ -60,14 +60,28 @@
   opacity: 0.55;
 }
 
-.firebase-provider-button svg {
+.firebase-provider-button svg,
+.firebase-provider-icon {
   width: 18px;
   height: 18px;
+  flex: 0 0 auto;
+}
+
+.firebase-provider-icon {
+  display: block;
+  object-fit: contain;
+}
+
+.firebase-provider-button svg {
   fill: none;
   stroke: currentColor;
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+[data-theme="dark"] .github-provider-icon {
+  filter: invert(1);
 }
 
 .google-provider-mark {
@@ -2344,6 +2358,14 @@ body.notes-selection-mode .note-card:nth-of-type(2n) {
   margin-top: clamp(18px, 3vw, 44px);
 }
 
+.pass-time-account-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  max-width: 100%;
+}
+
 .pass-time-profile {
   display: flex;
   align-items: center;
@@ -2430,6 +2452,145 @@ body.notes-selection-mode .note-card:nth-of-type(2n) {
   color: var(--text-muted);
   font-size: 11px;
   font-weight: 460;
+}
+
+.pass-time-ranking-button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0;
+  background: color-mix(in srgb, var(--surface) 76%, transparent);
+  color: var(--text);
+  cursor: pointer;
+  transition: color 160ms ease, background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.pass-time-ranking-button:hover {
+  border-color: color-mix(in srgb, var(--accent) 56%, var(--line));
+  background: var(--accent-soft);
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.pass-time-ranking-button svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pass-time-ranking {
+  width: min(660px, calc(100vw - 96px));
+}
+
+.pass-time-ranking-list {
+  display: grid;
+  gap: 10px;
+  width: min(560px, 100%);
+  max-height: min(54vh, 520px);
+  overflow-y: auto;
+  padding: 2px;
+  scrollbar-gutter: stable;
+}
+
+.pass-time-ranking-row {
+  display: grid;
+  grid-template-columns: 32px 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 66px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 10px 14px 10px 12px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+}
+
+.pass-time-ranking-row.current {
+  border-color: color-mix(in srgb, var(--accent) 64%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
+.pass-time-ranking-position {
+  color: var(--text-muted);
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.pass-time-ranking-row:nth-child(-n + 3) .pass-time-ranking-position {
+  color: var(--accent);
+}
+
+.pass-time-ranking-avatar {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+}
+
+.pass-time-ranking-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pass-time-ranking-avatar svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+}
+
+.pass-time-ranking-identity,
+.pass-time-ranking-score {
+  display: grid;
+  min-width: 0;
+}
+
+.pass-time-ranking-identity strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 560;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pass-time-ranking-identity small,
+.pass-time-ranking-score small {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 430;
+}
+
+.pass-time-ranking-score {
+  justify-items: end;
+}
+
+.pass-time-ranking-score strong {
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.pass-time-ranking-message {
+  margin: 26px 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  text-align: center;
 }
 
 .pass-time-card {
@@ -11406,6 +11567,43 @@ body.custom-cursor .draw-tool-card.dragging .draw-tool-head {
     min-height: 42px !important;
   }
 
+  body.mobile-screen-game .pass-time-account-row {
+    width: min(100%, 336px) !important;
+  }
+
+  body.mobile-screen-game .pass-time-ranking-button {
+    width: 42px !important;
+    height: 42px !important;
+    flex-basis: 42px !important;
+  }
+
+  body.mobile-screen-game .pass-time-ranking {
+    width: min(100%, 372px) !important;
+  }
+
+  body.mobile-screen-game .pass-time-ranking-list {
+    width: min(100%, 350px) !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  body.mobile-screen-game .pass-time-ranking-row {
+    grid-template-columns: 26px 38px minmax(0, 1fr) auto !important;
+    gap: 9px !important;
+    min-height: 62px !important;
+    border-radius: 17px !important;
+    padding: 9px 11px 9px 9px !important;
+  }
+
+  body.mobile-screen-game .pass-time-ranking-avatar {
+    width: 38px !important;
+    height: 38px !important;
+  }
+
+  body.mobile-screen-game .pass-time-ranking-score strong {
+    font-size: 18px !important;
+  }
+
   body.mobile-screen-game .notisual-header h2 {
     font-size: clamp(27px, 8vw, 34px) !important;
   }
@@ -11747,6 +11945,7 @@ body.account-page-open .modal-scrim {
 }
 
 .account-modal .firebase-provider-button svg,
+.account-modal .firebase-provider-icon,
 .account-modal .google-provider-mark {
   position: absolute;
   left: 20px;

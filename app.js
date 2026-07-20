@@ -424,6 +424,9 @@ let noteSelectionMode = false;
 const selectedNoteIds = new Set();
 let timeGame = createTimeGameState({ active: false });
 let passTimeScreen = "";
+let passTimeLeaderboardEntries = [];
+let passTimeLeaderboardLoading = false;
+let passTimeLeaderboardError = "";
 let ticTacToeGame = createTicTacToeState();
 let chessGame = createChessState();
 let notisualGame = createNotisualState();
@@ -4917,6 +4920,10 @@ function renderPassTimeGame() {
     renderNotisualGame();
     return;
   }
+  if (passTimeScreen === "ranking") {
+    renderPassTimeRanking();
+    return;
+  }
   renderPassTimeMenu();
 }
 
@@ -4930,6 +4937,9 @@ function renderPassTimeMenu() {
   header.className = "pass-time-header";
   header.innerHTML = "<h2>Hora da pausa, sem sair do Noti.</h2>";
 
+  const accountRow = document.createElement("div");
+  accountRow.className = "pass-time-account-row";
+
   const profile = document.createElement("div");
   profile.className = "pass-time-profile";
   profile.append(createPassTimeProfileAvatar());
@@ -4937,6 +4947,15 @@ function renderPassTimeMenu() {
   profileText.className = "pass-time-profile-text";
   profileText.innerHTML = `<strong>${escapeHtml(getPassTimeProfileName())}</strong><span class="pass-time-total-score"><b>${getPassTimeTotalScore()}</b><small>pontos</small></span>`;
   profile.append(profileText);
+
+  const rankingButton = document.createElement("button");
+  rankingButton.type = "button";
+  rankingButton.className = "pass-time-ranking-button";
+  rankingButton.title = "Abrir ranking";
+  rankingButton.setAttribute("aria-label", "Abrir ranking");
+  rankingButton.innerHTML = '<svg aria-hidden="true"><use href="#icon-ranking"></use></svg>';
+  rankingButton.addEventListener("click", openPassTimeRanking);
+  accountRow.append(profile, rankingButton);
 
   const grid = document.createElement("div");
   grid.className = "pass-time-grid pass-time-choice-grid";
@@ -4963,7 +4982,7 @@ function renderPassTimeMenu() {
     })
   );
 
-  section.append(header, profile, grid);
+  section.append(header, accountRow, grid);
   elements.editorEmpty.append(section);
 }
 
@@ -4981,6 +5000,102 @@ function getPassTimeProfileName() {
 
 function getPassTimeTotalScore() {
   return getTimeGameScore() + getNotisualScore();
+}
+
+async function openPassTimeRanking() {
+  clearNotisualTimers();
+  selectedNoteId = null;
+  passTimeScreen = "ranking";
+  passTimeLeaderboardLoading = true;
+  passTimeLeaderboardError = "";
+  if (isMobileLayout()) showMobileScreen("game");
+  renderEditor();
+
+  try {
+    passTimeLeaderboardEntries = typeof fetchFirebaseLeaderboardEntries === "function"
+      ? await fetchFirebaseLeaderboardEntries()
+      : [];
+  } catch (error) {
+    console.warn("Não foi possível carregar o ranking.", error);
+    passTimeLeaderboardEntries = [];
+    passTimeLeaderboardError = "Ranking indisponível no momento.";
+  } finally {
+    passTimeLeaderboardLoading = false;
+    if (passTimeScreen === "ranking") renderEditor();
+  }
+}
+
+function renderPassTimeRanking() {
+  elements.editorEmpty.replaceChildren();
+  const section = document.createElement("section");
+  section.className = "pass-time-game pass-time-ranking";
+  section.setAttribute("aria-label", "Ranking dos jogos");
+
+  const header = document.createElement("header");
+  header.className = "pass-time-header";
+  header.innerHTML = "<h2>Ranking</h2><p>Maiores pontuações do Noti.</p>";
+
+  const list = document.createElement("div");
+  list.className = "pass-time-ranking-list";
+  list.setAttribute("aria-live", "polite");
+
+  if (passTimeLeaderboardLoading) {
+    const loading = document.createElement("p");
+    loading.className = "pass-time-ranking-message";
+    loading.textContent = "Carregando ranking...";
+    list.append(loading);
+  } else if (!passTimeLeaderboardEntries.length) {
+    const empty = document.createElement("p");
+    empty.className = "pass-time-ranking-message";
+    empty.textContent = passTimeLeaderboardError || "Ainda não há jogadores com pontos.";
+    list.append(empty);
+  } else {
+    passTimeLeaderboardEntries.forEach((entry, index) => {
+      const row = document.createElement("div");
+      row.className = "pass-time-ranking-row";
+      row.classList.toggle("current", entry.uid === getCurrentUser()?.id);
+
+      const position = document.createElement("span");
+      position.className = "pass-time-ranking-position";
+      position.textContent = String(index + 1);
+
+      const avatar = document.createElement("span");
+      avatar.className = "pass-time-ranking-avatar";
+      renderAvatar(avatar, entry);
+
+      const identity = document.createElement("span");
+      identity.className = "pass-time-ranking-identity";
+      const name = document.createElement("strong");
+      name.textContent = entry.name || "Usuário";
+      const username = document.createElement("small");
+      username.textContent = entry.username || "@usuario";
+      identity.append(name, username);
+
+      const score = document.createElement("span");
+      score.className = "pass-time-ranking-score";
+      const value = document.createElement("strong");
+      value.textContent = String(normalizeNumber(entry.totalPoints, 0));
+      const label = document.createElement("small");
+      label.textContent = "pontos";
+      score.append(value, label);
+
+      row.append(position, avatar, identity, score);
+      list.append(row);
+    });
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "pass-time-actions";
+  const backButton = document.createElement("button");
+  backButton.type = "button";
+  backButton.className = "time-game-next-button";
+  backButton.textContent = "Voltar";
+  backButton.title = "Voltar para jogos";
+  backButton.addEventListener("click", openPassTimeMenu);
+  actions.append(backButton);
+
+  section.append(header, list, actions);
+  elements.editorEmpty.append(section);
 }
 
 function createPassTimeCard({ title, text, icon, symbol, iconOnly = false, action }) {
@@ -6580,6 +6695,7 @@ function awardTimeGamePoints(points) {
   user.timeGameScore = normalizeNumber(user.timeGameScore, 0) + safePoints;
   user.updatedAt = Date.now();
   saveUsers();
+  if (typeof publishFirebaseLeaderboardEntry === "function") void publishFirebaseLeaderboardEntry(user);
   return safePoints;
 }
 
@@ -6594,6 +6710,7 @@ function awardNotisualPoints(points) {
   user.notisualScore = normalizeNumber(user.notisualScore, 0) + safePoints;
   user.updatedAt = Date.now();
   saveUsers();
+  if (typeof publishFirebaseLeaderboardEntry === "function") void publishFirebaseLeaderboardEntry(user);
   return safePoints;
 }
 
@@ -9584,6 +9701,8 @@ async function saveProfileSettings() {
     } catch (error) {
       console.warn("O perfil foi salvo, mas o nome do Firebase não foi atualizado.", error);
     }
+    if (typeof persistFirebaseAccountProfile === "function") void persistFirebaseAccountProfile(user.id, user);
+    if (typeof publishFirebaseLeaderboardEntry === "function") void publishFirebaseLeaderboardEntry(user);
   }
 
   refreshAccountUi();

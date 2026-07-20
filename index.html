@@ -200,6 +200,11 @@
         <path d="M17 11.5a3.5 3.5 0 0 0 0-7" />
         <path d="M17.5 14.5a6 6 0 0 1 4 6.5" />
       </symbol>
+      <symbol id="icon-ranking" viewBox="0 0 24 24">
+        <path d="M8 21h8M12 17v4" />
+        <path d="M7 4h10v4a5 5 0 0 1-10 0V4Z" />
+        <path d="M7 6H4v1a4 4 0 0 0 4 4M17 6h3v1a4 4 0 0 1-4 4" />
+      </symbol>
       
       <symbol id="icon-archive" viewBox="0 0 24 24">
         <path d="M4 4h16v5H4zM6 9v11h12V9" />
@@ -783,11 +788,11 @@
               <section class="auth-view auth-provider-view" id="authProviderView" data-auth-view="providers">
                 <div class="auth-provider-stack" aria-label="Formas de autenticação">
                   <button class="firebase-provider-button" id="googleAuthButton" type="button" title="Continuar com Google">
-                    <span class="google-provider-mark" aria-hidden="true">G</span>
+                    <img class="firebase-provider-icon" src="assets/google-color-svgrepo-com.svg" alt="" aria-hidden="true" />
                     <span id="googleAuthLabel">Login com Google</span>
                   </button>
                   <button class="firebase-provider-button" id="githubAuthButton" type="button" title="Continuar com GitHub">
-                    <svg aria-hidden="true"><use href="#icon-github"></use></svg>
+                    <img class="firebase-provider-icon github-provider-icon" src="assets/github-142-svgrepo-com.svg" alt="" aria-hidden="true" />
                     <span id="githubAuthLabel">Login com GitHub</span>
                   </button>
                   <button class="firebase-provider-button" id="emailAuthButton" type="button" title="Continuar com e-mail">

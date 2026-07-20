@@ -103,6 +103,7 @@ async function handleFirebaseAuthState(authUser, { profileReady = false } = {}) 
     firebaseCloudReady = true;
     setFirebaseSyncStatus("error", getFirebaseSyncErrorMessage(error));
   }
+  await publishFirebaseLeaderboardEntry(getCurrentUser());
   return { requiresProfile: false, profile };
 }
 
@@ -179,6 +180,98 @@ async function persistFirebaseAccountProfile(uid, profile) {
   } catch (error) {
     console.warn("O perfil foi conectado, mas o resumo não pôde ser atualizado.", error);
   }
+}
+
+function getFirebaseLeaderboardTotalPoints(user) {
+  return Math.max(0,
+    normalizeNumber(user?.timeGameScore, 0)
+    + normalizeNumber(user?.notisualScore, 0));
+}
+
+function getFirebaseLeaderboardPhoto(photo) {
+  const value = String(photo || "").trim();
+  if (!value || value.length > 180000) return "";
+  if (/^https:\/\//i.test(value)) return value;
+  if (/^data:image\/(?:png|jpe?g|webp|gif);base64,/i.test(value)) return value;
+  return "";
+}
+
+function buildFirebaseLeaderboardEntry(user, uid = user?.id || "") {
+  const totalPoints = getFirebaseLeaderboardTotalPoints(user);
+  return {
+    uid: String(uid || ""),
+    name: String(user?.name || "Usuário").trim().slice(0, 80) || "Usuário",
+    username: normalizeUsername(user?.username || "@usuario").slice(0, 25),
+    photo: getFirebaseLeaderboardPhoto(user?.photo),
+    totalPoints,
+    updatedAt: Date.now(),
+  };
+}
+
+function getLocalFirebaseLeaderboardEntries() {
+  return users
+    .map((user) => buildFirebaseLeaderboardEntry(user, user.id))
+    .filter((entry) => entry.uid && entry.totalPoints > 0);
+}
+
+function sortFirebaseLeaderboardEntries(entries) {
+  return entries.sort((left, right) => (
+    right.totalPoints - left.totalPoints
+    || left.name.localeCompare(right.name, "pt-BR", { sensitivity: "base" })
+    || left.uid.localeCompare(right.uid)
+  ));
+}
+
+async function publishFirebaseLeaderboardEntry(user = getCurrentUser()) {
+  if (!user || !firebaseDatabase || !firebaseAuthUser || firebaseAuthUser.uid !== user.id || !navigator.onLine) {
+    return false;
+  }
+
+  const entry = buildFirebaseLeaderboardEntry(user, firebaseAuthUser.uid);
+  const reference = firebaseDatabase.ref(`leaderboard/${firebaseAuthUser.uid}`);
+  try {
+    if (entry.totalPoints <= 0) {
+      await runFirebaseRequest(() => reference.remove(), 2);
+    } else {
+      const { uid, ...publicEntry } = entry;
+      await runFirebaseRequest(() => reference.set(publicEntry), 2);
+    }
+    return true;
+  } catch (error) {
+    console.warn("Não foi possível atualizar a pontuação pública do ranking.", error);
+    return false;
+  }
+}
+
+async function fetchFirebaseLeaderboardEntries() {
+  const entriesByUid = new Map(
+    getLocalFirebaseLeaderboardEntries().map((entry) => [entry.uid, entry])
+  );
+
+  if (!firebaseDatabase || !navigator.onLine) {
+    return sortFirebaseLeaderboardEntries(Array.from(entriesByUid.values()));
+  }
+
+  try {
+    const snapshot = await runFirebaseRequest(() => firebaseDatabase.ref("leaderboard").once("value"), 2);
+    const remoteEntries = snapshot.val() || {};
+    Object.entries(remoteEntries).forEach(([uid, value]) => {
+      const totalPoints = Math.max(0, normalizeNumber(value?.totalPoints, 0));
+      if (!uid || totalPoints <= 0) return;
+      entriesByUid.set(uid, {
+        uid,
+        name: String(value?.name || "Usuário").trim().slice(0, 80) || "Usuário",
+        username: normalizeUsername(value?.username || "@usuario").slice(0, 25),
+        photo: getFirebaseLeaderboardPhoto(value?.photo),
+        totalPoints,
+        updatedAt: normalizeNumber(value?.updatedAt, 0),
+      });
+    });
+  } catch (error) {
+    console.warn("O ranking online ainda não está disponível; exibindo pontuações deste dispositivo.", error);
+  }
+
+  return sortFirebaseLeaderboardEntries(Array.from(entriesByUid.values()));
 }
 
 function upsertFirebaseLocalProfile(authUser, preferredProfile = null) {
@@ -406,6 +499,7 @@ async function applyFirebaseSnapshot(payload) {
   }
   refreshAccountUi();
   render();
+  await publishFirebaseLeaderboardEntry(getCurrentUser());
 }
 
 async function runFirebaseRequest(operation, attempts = 3) {
